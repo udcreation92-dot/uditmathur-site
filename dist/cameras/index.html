@@ -307,8 +307,15 @@
         video.play().catch(() => {});
         overlay.classList.add('hidden');
         if (badge) { badge.textContent = 'LIVE'; badge.classList.remove('offline'); }
-        liveCount++;
-        updateStatus();
+      });
+
+      hls.on(Hls.Events.FRAG_LOADED, () => {
+        if (badge && badge.classList.contains('offline')) {
+          badge.textContent = 'LIVE';
+          badge.classList.remove('offline');
+          liveCount++;
+          updateStatus();
+        }
       });
 
       hls.on(Hls.Events.ERROR, (_, data) => {
