@@ -166,6 +166,7 @@
   function getRelay() { return relayInput.value.replace(/\/$/, ''); }
   function getPtz()   { return ptzInput.value.replace(/\/$/, ''); }
   function hlsUrl(id) { return `${getRelay()}/api/stream.m3u8?src=${id}`; }
+  function wsUrl(id)  { return `${getRelay().replace('https','wss').replace('http','ws')}/api/ws?src=${id}`; }
 
   // ── PTZ API ──────────────────────────────────────────────────────────────
   async function ptzCall(camId, path, method = 'POST', body = {}) {
@@ -316,36 +317,91 @@
       if (!card.classList.contains('fullscreen-card')) card.classList.add('fullscreen-card');
     });
 
-    initHls(cam.id, video, overlay);
+    initStream(cam.id, video, overlay);
     return card;
   }
 
-  function initHls(id, video, overlay) {
+  function initStream(id, video, overlay) {
     const badge = document.getElementById(`badge-${id}`);
+    let ws, mse, retryTimer;
+
     const setLive = () => {
       overlay.classList.add('hidden');
-      if (badge) { badge.textContent = 'LIVE'; badge.classList.remove('offline'); }
+      if (badge && badge.classList.contains('offline')) {
+        badge.textContent = 'LIVE'; badge.classList.remove('offline');
+        liveCount++; updateStatus();
+      }
     };
     const setOffline = () => {
       overlay.classList.remove('hidden'); overlay.textContent = 'Offline';
       if (badge) { badge.textContent = 'OFFLINE'; badge.classList.add('offline'); }
     };
 
-    if (Hls.isSupported()) {
-      const hls = new Hls({ lowLatencyMode: true });
-      hls.loadSource(hlsUrl(id));
-      hls.attachMedia(video);
-      hls.on(Hls.Events.MANIFEST_PARSED, () => { video.play().catch(() => {}); });
-      hls.on(Hls.Events.FRAG_LOADED, () => {
-        if (badge?.classList.contains('offline')) { setLive(); liveCount++; updateStatus(); }
-      });
-      hls.on(Hls.Events.ERROR, (_, d) => {
-        if (d.fatal) { setOffline(); setTimeout(() => initHls(id, video, overlay), 10000); }
-      });
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = hlsUrl(id);
-      video.addEventListener('loadedmetadata', () => { video.play().catch(() => {}); setLive(); liveCount++; updateStatus(); });
+    function connect() {
+      if (ws) { try { ws.close(); } catch(e){} }
+
+      // Try WebSocket/MSE first (most stable)
+      if ('MediaSource' in window) {
+        mse = new MediaSource();
+        video.src = URL.createObjectURL(mse);
+        mse.addEventListener('sourceopen', () => {
+          ws = new WebSocket(wsUrl(id));
+          ws.binaryType = 'arraybuffer';
+          let sb;
+
+          ws.onmessage = (e) => {
+            if (typeof e.data === 'string') {
+              // go2rtc sends codec info as JSON first
+              try {
+                const info = JSON.parse(e.data);
+                const mime = info.type || 'video/mp4; codecs="avc1.640028"';
+                if (!sb && MediaSource.isTypeSupported(mime)) {
+                  sb = mse.addSourceBuffer(mime);
+                  sb.mode = 'segments';
+                  setLive();
+                  video.play().catch(() => {});
+                }
+              } catch(e) {}
+              return;
+            }
+            if (sb && !sb.updating) {
+              try { sb.appendBuffer(e.data); } catch(e) {}
+            }
+          };
+
+          ws.onerror = () => { setOffline(); scheduleRetry(); };
+          ws.onclose = () => { setOffline(); scheduleRetry(); };
+        });
+        video.onerror = () => { setOffline(); scheduleRetry(); };
+
+      } else {
+        // Fallback to HLS (Safari)
+        if (Hls.isSupported()) {
+          const hls = new Hls({
+            lowLatencyMode: true,
+            maxBufferLength: 10,
+            maxMaxBufferLength: 20,
+            fragLoadingRetryDelay: 500,
+            manifestLoadingRetryDelay: 500,
+          });
+          hls.loadSource(hlsUrl(id));
+          hls.attachMedia(video);
+          hls.on(Hls.Events.MANIFEST_PARSED, () => { video.play().catch(() => {}); });
+          hls.on(Hls.Events.FRAG_LOADED, () => { setLive(); });
+          hls.on(Hls.Events.ERROR, (_, d) => { if (d.fatal) { setOffline(); scheduleRetry(); } });
+        } else {
+          video.src = hlsUrl(id);
+          video.onloadedmetadata = () => { video.play().catch(() => {}); setLive(); };
+        }
+      }
     }
+
+    function scheduleRetry() {
+      clearTimeout(retryTimer);
+      retryTimer = setTimeout(connect, 5000);
+    }
+
+    connect();
   }
 
   function updateStatus() {
