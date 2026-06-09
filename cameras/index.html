@@ -19,198 +19,118 @@
       --error: #ef4444;
     }
 
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: 'Inter', system-ui, sans-serif;
-      min-height: 100vh;
-    }
+    body { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; min-height: 100vh; }
 
     header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 14px 24px;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 24px; background: var(--surface); border-bottom: 1px solid var(--border);
     }
-
-    header h1 {
-      font-size: 1rem;
-      font-weight: 600;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      color: var(--accent);
-    }
-
-    #clock {
-      font-size: 0.85rem;
-      color: var(--muted);
-      font-variant-numeric: tabular-nums;
-    }
-
-    #status-bar {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 0.75rem;
-      color: var(--muted);
-    }
-
-    #status-dot {
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      background: var(--live);
-      animation: pulse 2s infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
-    }
+    header h1 { font-size: 1rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent); }
+    #clock { font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+    #status-bar { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--muted); }
+    #status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--live); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 
     .toolbar {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 12px 24px;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px; padding: 12px 24px;
+      background: var(--surface); border-bottom: 1px solid var(--border); flex-wrap: wrap;
     }
-
     .toolbar label { font-size: 0.8rem; color: var(--muted); }
-
     .toolbar select, .toolbar input {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      color: var(--text);
-      padding: 5px 10px;
-      border-radius: 6px;
-      font-size: 0.8rem;
-      cursor: pointer;
+      background: var(--bg); border: 1px solid var(--border); color: var(--text);
+      padding: 5px 10px; border-radius: 6px; font-size: 0.8rem; cursor: pointer;
+    }
+    .toolbar button {
+      background: var(--accent); color: #fff; border: none; padding: 5px 14px;
+      border-radius: 6px; font-size: 0.8rem; cursor: pointer;
     }
 
-    .toolbar select:focus, .toolbar input:focus {
-      outline: 1px solid var(--accent);
-    }
-
-    #grid {
-      display: grid;
-      gap: 3px;
-      padding: 16px;
-      grid-template-columns: repeat(4, 1fr);
-    }
+    #grid { display: grid; gap: 3px; padding: 16px; grid-template-columns: repeat(4, 1fr); }
 
     .cam-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      overflow: hidden;
-      position: relative;
-      aspect-ratio: 16/9;
-      cursor: pointer;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+      overflow: hidden; position: relative; aspect-ratio: 16/9; cursor: pointer;
       transition: border-color 0.2s;
     }
-
     .cam-card:hover { border-color: var(--accent); }
-
     .cam-card.fullscreen-card {
-      position: fixed;
-      inset: 0;
-      z-index: 999;
-      border-radius: 0;
-      aspect-ratio: unset;
+      position: fixed; inset: 0; z-index: 999; border-radius: 0; aspect-ratio: unset;
     }
-
-    .cam-card video {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-      background: #000;
-    }
+    .cam-card video { width: 100%; height: 100%; object-fit: cover; display: block; background: #000; }
 
     .cam-label {
-      position: absolute;
-      bottom: 0; left: 0; right: 0;
+      position: absolute; bottom: 0; left: 0; right: 0;
       background: linear-gradient(transparent, rgba(0,0,0,0.75));
-      padding: 20px 10px 8px;
-      font-size: 0.72rem;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      padding: 20px 10px 8px; font-size: 0.72rem;
+      display: flex; align-items: center; justify-content: space-between;
     }
-
     .cam-label span { font-weight: 500; }
-
-    .badge {
-      font-size: 0.65rem;
-      padding: 2px 6px;
-      border-radius: 4px;
-      background: var(--live);
-      color: #000;
-      font-weight: 600;
-    }
-
-    .badge.offline {
-      background: var(--error);
-      color: #fff;
-    }
+    .badge { font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; background: var(--live); color: #000; font-weight: 600; }
+    .badge.offline { background: var(--error); color: #fff; }
 
     .cam-overlay {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(0,0,0,0.55);
-      font-size: 0.8rem;
-      color: var(--muted);
-      pointer-events: none;
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.55); font-size: 0.8rem; color: var(--muted); pointer-events: none;
     }
-
     .cam-overlay.hidden { display: none; }
 
     .close-btn {
-      position: absolute;
-      top: 12px; right: 12px;
-      background: rgba(0,0,0,0.6);
-      border: 1px solid var(--border);
-      color: var(--text);
-      width: 32px; height: 32px;
-      border-radius: 6px;
-      font-size: 1.1rem;
-      cursor: pointer;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
+      position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.6);
+      border: 1px solid var(--border); color: var(--text); width: 32px; height: 32px;
+      border-radius: 6px; font-size: 1.1rem; cursor: pointer; display: none;
+      align-items: center; justify-content: center; z-index: 1000;
     }
-
     .cam-card.fullscreen-card .close-btn { display: flex; }
 
-    /* Grid layouts */
-    .layout-1 { grid-template-columns: 1fr; }
-    .layout-2 { grid-template-columns: repeat(2, 1fr); }
-    .layout-3 { grid-template-columns: repeat(3, 1fr); }
-    .layout-4 { grid-template-columns: repeat(4, 1fr); }
+    /* ── PTZ Controls ──────────────────────────────────────────── */
+    .ptz-panel {
+      position: absolute; bottom: 36px; right: 8px;
+      display: none; flex-direction: column; align-items: center; gap: 4px;
+      z-index: 100;
+    }
+    .cam-card:hover .ptz-panel,
+    .cam-card.fullscreen-card .ptz-panel { display: flex; }
 
-    @media (max-width: 900px) {
-      #grid { grid-template-columns: repeat(2, 1fr) !important; }
+    .ptz-row { display: flex; gap: 4px; }
+
+    .ptz-btn {
+      width: 30px; height: 30px; background: rgba(0,0,0,0.65);
+      border: 1px solid rgba(255,255,255,0.15); border-radius: 6px;
+      color: #fff; font-size: 0.85rem; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.15s; user-select: none; -webkit-user-select: none;
+      touch-action: none;
     }
-    @media (max-width: 500px) {
-      #grid { grid-template-columns: 1fr !important; }
+    .ptz-btn:active, .ptz-btn.held { background: var(--accent); }
+
+    .ptz-zoom { display: flex; flex-direction: column; gap: 4px; }
+
+    .patrol-btn {
+      margin-top: 2px; padding: 3px 8px; font-size: 0.65rem; border-radius: 4px;
+      background: rgba(0,0,0,0.65); border: 1px solid rgba(255,255,255,0.15);
+      color: #fff; cursor: pointer; white-space: nowrap;
     }
+    .patrol-btn.active { background: #f59e0b; color: #000; border-color: #f59e0b; }
+
+    .preset-bar {
+      display: flex; gap: 3px; margin-top: 2px; flex-wrap: wrap; max-width: 120px;
+    }
+    .preset-chip {
+      padding: 2px 6px; font-size: 0.6rem; border-radius: 3px;
+      background: rgba(0,0,0,0.65); border: 1px solid rgba(255,255,255,0.15);
+      color: #fff; cursor: pointer;
+    }
+    .preset-chip:hover { background: var(--accent); }
+
+    @media (max-width: 900px) { #grid { grid-template-columns: repeat(2, 1fr) !important; } }
+    @media (max-width: 500px) { #grid { grid-template-columns: 1fr !important; } }
   </style>
 </head>
 <body>
 
 <header>
   <h1>&#9679; Camera Monitor</h1>
-  <div id="status-bar">
-    <div id="status-dot"></div>
-    <span id="stream-status">Connecting…</span>
-  </div>
+  <div id="status-bar"><div id="status-dot"></div><span id="stream-status">Connecting…</span></div>
   <div id="clock">--:--:--</div>
 </header>
 
@@ -224,45 +144,140 @@
   </select>
   <label style="margin-left:12px">Relay</label>
   <input id="relay-url" type="text" value="https://stream.uditmathur.uk" style="width:260px" />
-  <button onclick="reloadAll()" style="
-    background:var(--accent);color:#fff;border:none;padding:5px 14px;
-    border-radius:6px;font-size:0.8rem;cursor:pointer;margin-left:4px">
-    Reload
-  </button>
+  <label style="margin-left:12px">PTZ</label>
+  <input id="ptz-url" type="text" value="https://ptz.uditmathur.uk" style="width:220px" />
+  <button onclick="reloadAll()">Reload</button>
 </div>
 
 <div id="grid"></div>
 
 <script>
-  // ── Config: edit camera names. Streams are served by go2rtc at /api/ws?src=NAME
   const CAMERAS = [
-    { id: 'camera_01', name: 'Camera 1 (192.168.1.10)' },
-    { id: 'camera_02', name: 'Camera 2 (192.168.1.26)' },
+    { id: 'camera_01', name: 'Camera 1' },
+    { id: 'camera_02', name: 'Camera 2' },
   ];
 
   const grid = document.getElementById('grid');
   const relayInput = document.getElementById('relay-url');
+  const ptzInput = document.getElementById('ptz-url');
   const statusEl = document.getElementById('stream-status');
   let liveCount = 0;
 
-  function getRelay() {
-    return relayInput.value.replace(/\/$/, '');
+  function getRelay() { return relayInput.value.replace(/\/$/, ''); }
+  function getPtz()   { return ptzInput.value.replace(/\/$/, ''); }
+  function hlsUrl(id) { return `${getRelay()}/api/stream.m3u8?src=${id}`; }
+
+  // ── PTZ API ──────────────────────────────────────────────────────────────
+  async function ptzCall(camId, path, method = 'POST', body = {}) {
+    try {
+      const opts = { method, headers: { 'Content-Type': 'application/json' } };
+      if (method === 'POST') opts.body = JSON.stringify(body);
+      const r = await fetch(`${getPtz()}/ptz/${camId}${path}`, opts);
+      return r.json();
+    } catch (e) { console.warn('PTZ error', e); }
   }
 
-  // go2rtc exposes HLS at /api/stream.m3u8?src=NAME
-  function hlsUrl(id) {
-    return `${getRelay()}/api/stream.m3u8?src=${id}`;
+  function startMove(camId, pan, tilt, zoom = 0) {
+    ptzCall(camId, '/move', 'POST', { pan, tilt, zoom });
+  }
+  function stopMove(camId) { ptzCall(camId, '/stop'); }
+
+  // ── PTZ panel builder ─────────────────────────────────────────────────────
+  function buildPtzPanel(camId) {
+    const panel = document.createElement('div');
+    panel.className = 'ptz-panel';
+
+    const speed = 0.5;
+
+    function btn(label, onDown, title = '') {
+      const b = document.createElement('button');
+      b.className = 'ptz-btn';
+      b.innerHTML = label;
+      b.title = title;
+
+      const start = (e) => { e.stopPropagation(); b.classList.add('held'); onDown(); };
+      const stop  = (e) => { e.stopPropagation(); b.classList.remove('held'); stopMove(camId); };
+
+      b.addEventListener('mousedown', start);
+      b.addEventListener('mouseup', stop);
+      b.addEventListener('mouseleave', stop);
+      b.addEventListener('touchstart', start, { passive: true });
+      b.addEventListener('touchend', stop);
+      return b;
+    }
+
+    // D-pad
+    const up    = btn('&#9650;', () => startMove(camId, 0, speed),   'Tilt Up');
+    const down  = btn('&#9660;', () => startMove(camId, 0, -speed),  'Tilt Down');
+    const left  = btn('&#9664;', () => startMove(camId, -speed, 0),  'Pan Left');
+    const right = btn('&#9654;', () => startMove(camId, speed, 0),   'Pan Right');
+    const home  = btn('&#9632;', () => stopMove(camId), 'Stop');
+
+    const row1 = document.createElement('div'); row1.className = 'ptz-row';
+    row1.appendChild(up);
+    const row2 = document.createElement('div'); row2.className = 'ptz-row';
+    row2.append(left, home, right);
+    const row3 = document.createElement('div'); row3.className = 'ptz-row';
+    row3.appendChild(down);
+
+    // Zoom
+    const zoomIn  = btn('+', () => startMove(camId, 0, 0, speed),  'Zoom In');
+    const zoomOut = btn('&#8722;', () => startMove(camId, 0, 0, -speed), 'Zoom Out');
+    const zoomCol = document.createElement('div'); zoomCol.className = 'ptz-zoom';
+    zoomCol.append(zoomIn, zoomOut);
+
+    const dpadZoom = document.createElement('div'); dpadZoom.className = 'ptz-row';
+    const dpad = document.createElement('div');
+    dpad.style.display = 'flex'; dpad.style.flexDirection = 'column'; dpad.style.gap = '4px';
+    dpad.append(row1, row2, row3);
+    dpadZoom.append(dpad, zoomCol);
+    panel.appendChild(dpadZoom);
+
+    // Patrol button
+    let patrolling = false;
+    const patrolBtn = document.createElement('button');
+    patrolBtn.className = 'patrol-btn';
+    patrolBtn.textContent = '&#9654; Patrol';
+    patrolBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!patrolling) {
+        const r = await ptzCall(camId, '/patrol/start', 'POST', { interval: 10 });
+        if (r?.ok) { patrolling = true; patrolBtn.textContent = '&#9646;&#9646; Stop Patrol'; patrolBtn.classList.add('active'); }
+        else alert(r?.error || 'Patrol failed — make sure presets are saved on camera');
+      } else {
+        await ptzCall(camId, '/patrol/stop');
+        patrolling = false; patrolBtn.textContent = '&#9654; Patrol'; patrolBtn.classList.remove('active');
+      }
+    });
+    panel.appendChild(patrolBtn);
+
+    // Preset chips
+    const presetBar = document.createElement('div');
+    presetBar.className = 'preset-bar';
+    ptzCall(camId, '/presets', 'GET').then(presets => {
+      if (!Array.isArray(presets)) return;
+      presets.forEach(p => {
+        const chip = document.createElement('button');
+        chip.className = 'preset-chip';
+        chip.textContent = p.name || p.token;
+        chip.title = `Go to preset ${p.name}`;
+        chip.addEventListener('click', (e) => { e.stopPropagation(); ptzCall(camId, '/goto', 'POST', { presetToken: p.token }); });
+        presetBar.appendChild(chip);
+      });
+      if (presets.length) panel.appendChild(presetBar);
+    });
+
+    return panel;
   }
 
+  // ── Camera card ───────────────────────────────────────────────────────────
   function buildCard(cam) {
     const card = document.createElement('div');
     card.className = 'cam-card';
     card.id = `card-${cam.id}`;
 
     const video = document.createElement('video');
-    video.muted = true;
-    video.autoplay = true;
-    video.playsInline = true;
+    video.muted = true; video.autoplay = true; video.playsInline = true;
 
     const overlay = document.createElement('div');
     overlay.className = 'cam-overlay';
@@ -275,20 +290,14 @@
     const closeBtn = document.createElement('button');
     closeBtn.className = 'close-btn';
     closeBtn.innerHTML = '&#10005;';
-    closeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      card.classList.remove('fullscreen-card');
-    });
+    closeBtn.addEventListener('click', (e) => { e.stopPropagation(); card.classList.remove('fullscreen-card'); });
 
-    card.appendChild(video);
-    card.appendChild(overlay);
-    card.appendChild(label);
-    card.appendChild(closeBtn);
+    const ptzPanel = buildPtzPanel(cam.id);
+
+    card.append(video, overlay, label, closeBtn, ptzPanel);
 
     card.addEventListener('click', () => {
-      if (!card.classList.contains('fullscreen-card')) {
-        card.classList.add('fullscreen-card');
-      }
+      if (!card.classList.contains('fullscreen-card')) card.classList.add('fullscreen-card');
     });
 
     initHls(cam.id, video, overlay);
@@ -296,63 +305,38 @@
   }
 
   function initHls(id, video, overlay) {
-    const src = hlsUrl(id);
     const badge = document.getElementById(`badge-${id}`);
+    const setLive = () => {
+      overlay.classList.add('hidden');
+      if (badge) { badge.textContent = 'LIVE'; badge.classList.remove('offline'); }
+    };
+    const setOffline = () => {
+      overlay.classList.remove('hidden'); overlay.textContent = 'Offline';
+      if (badge) { badge.textContent = 'OFFLINE'; badge.classList.add('offline'); }
+    };
 
     if (Hls.isSupported()) {
       const hls = new Hls({ lowLatencyMode: true });
-      hls.loadSource(src);
+      hls.loadSource(hlsUrl(id));
       hls.attachMedia(video);
-
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        video.play().catch(() => {});
-        overlay.classList.add('hidden');
-        if (badge) { badge.textContent = 'LIVE'; badge.classList.remove('offline'); }
-      });
-
+      hls.on(Hls.Events.MANIFEST_PARSED, () => { video.play().catch(() => {}); });
       hls.on(Hls.Events.FRAG_LOADED, () => {
-        if (badge && badge.classList.contains('offline')) {
-          badge.textContent = 'LIVE';
-          badge.classList.remove('offline');
-          liveCount++;
-          updateStatus();
-        }
+        if (badge?.classList.contains('offline')) { setLive(); liveCount++; updateStatus(); }
       });
-
-      hls.on(Hls.Events.ERROR, (_, data) => {
-        if (data.fatal) {
-          overlay.classList.remove('hidden');
-          overlay.textContent = 'Offline';
-          if (badge) { badge.textContent = 'OFFLINE'; badge.classList.add('offline'); }
-          setTimeout(() => initHls(id, video, overlay), 10000);
-        }
+      hls.on(Hls.Events.ERROR, (_, d) => {
+        if (d.fatal) { setOffline(); setTimeout(() => initHls(id, video, overlay), 10000); }
       });
-
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      // Safari native HLS
-      video.src = src;
-      video.addEventListener('loadedmetadata', () => {
-        video.play().catch(() => {});
-        overlay.classList.add('hidden');
-        if (badge) { badge.textContent = 'LIVE'; badge.classList.remove('offline'); }
-        liveCount++;
-        updateStatus();
-      });
-    } else {
-      overlay.textContent = 'HLS not supported';
+      video.src = hlsUrl(id);
+      video.addEventListener('loadedmetadata', () => { video.play().catch(() => {}); setLive(); liveCount++; updateStatus(); });
     }
   }
 
   function updateStatus() {
-    const total = CAMERAS.length;
-    statusEl.textContent = `${liveCount} / ${total} cameras live`;
+    statusEl.textContent = `${liveCount} / ${CAMERAS.length} cameras live`;
   }
 
-  function reloadAll() {
-    liveCount = 0;
-    grid.innerHTML = '';
-    renderGrid();
-  }
+  function reloadAll() { liveCount = 0; grid.innerHTML = ''; renderGrid(); }
 
   function renderGrid() {
     CAMERAS.forEach(cam => grid.appendChild(buildCard(cam)));
@@ -360,19 +344,14 @@
   }
 
   document.getElementById('layout-select').addEventListener('change', (e) => {
-    grid.className = '';
-    grid.id = 'grid';
     grid.style.gridTemplateColumns = `repeat(${e.target.value}, 1fr)`;
   });
 
-  // Clock
   setInterval(() => {
-    document.getElementById('clock').textContent =
-      new Date().toLocaleTimeString('en-GB');
+    document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-GB');
   }, 1000);
 
   renderGrid();
 </script>
-
 </body>
 </html>
