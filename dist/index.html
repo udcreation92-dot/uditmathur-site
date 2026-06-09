@@ -46,6 +46,10 @@
       max-width: 440px;
     }
 
+    .apps.three .app-card:last-child {
+      grid-column: 1 / -1;
+    }
+
     @media (max-width: 360px) {
       .apps { grid-template-columns: 1fr; }
     }
@@ -74,6 +78,7 @@
 
     .app-card.tasks   { border-top: 3px solid #818cf8; }
     .app-card.accounts { border-top: 3px solid #3b82f6; }
+    .app-card.cameras  { border-top: 3px solid #22c55e; }
 
     .app-icon { font-size: 2.25rem; line-height: 1; }
 
@@ -102,7 +107,7 @@
   <p class="greeting">Welcome back</p>
   <h1>Udit Mathur</h1>
 
-  <div class="apps">
+  <div class="apps three">
     <a href="/task/" class="app-card tasks">
       <span class="app-icon">✅</span>
       <span class="app-name">Tasks</span>
@@ -112,6 +117,11 @@
       <span class="app-icon">📒</span>
       <span class="app-name">Accounts</span>
       <span class="app-desc">Bookkeeping &amp; ledgers</span>
+    </a>
+    <a href="/cameras/" class="app-card cameras">
+      <span class="app-icon">📷</span>
+      <span class="app-name">Cameras</span>
+      <span class="app-desc">Live security camera feeds</span>
     </a>
   </div>
 
