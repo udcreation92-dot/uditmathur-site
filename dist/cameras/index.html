@@ -3,395 +3,267 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Camera Monitor — uditmathur.uk</title>
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <title>Camera Recordings — uditmathur.uk</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     :root {
-      --bg: #0a0a0f;
-      --surface: #12121a;
-      --border: #1e1e2e;
-      --accent: #5b8dee;
-      --text: #e2e8f0;
-      --muted: #64748b;
-      --live: #22c55e;
-      --error: #ef4444;
+      --bg: #0a0a0f; --surface: #12121a; --surface2: #1a1a28;
+      --border: #1e1e2e; --accent: #5b8dee; --text: #e2e8f0;
+      --muted: #64748b; --live: #22c55e; --error: #ef4444;
     }
-
-    body { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; min-height: 100vh; }
+    body { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
 
     header {
       display: flex; align-items: center; justify-content: space-between;
       padding: 14px 24px; background: var(--surface); border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
     }
     header h1 { font-size: 1rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent); }
     #clock { font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
-    #status-bar { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--muted); }
-    #status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--live); animation: pulse 2s infinite; }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 
-    .toolbar {
-      display: flex; align-items: center; gap: 10px; padding: 12px 24px;
-      background: var(--surface); border-bottom: 1px solid var(--border); flex-wrap: wrap;
-    }
-    .toolbar label { font-size: 0.8rem; color: var(--muted); }
-    .toolbar select, .toolbar input {
-      background: var(--bg); border: 1px solid var(--border); color: var(--text);
-      padding: 5px 10px; border-radius: 6px; font-size: 0.8rem; cursor: pointer;
-    }
-    .toolbar button {
-      background: var(--accent); color: #fff; border: none; padding: 5px 14px;
-      border-radius: 6px; font-size: 0.8rem; cursor: pointer;
-    }
+    .layout { display: flex; flex: 1; overflow: hidden; }
 
-    #grid { display: grid; gap: 3px; padding: 16px; grid-template-columns: repeat(4, 1fr); }
-
-    .cam-card {
-      background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
-      overflow: hidden; position: relative; aspect-ratio: 16/9; cursor: pointer;
-      transition: border-color 0.2s;
+    /* ── Sidebar ─────────────────────────────────────── */
+    .sidebar {
+      width: 260px; flex-shrink: 0; background: var(--surface);
+      border-right: 1px solid var(--border); display: flex; flex-direction: column;
+      overflow-y: auto;
     }
-    .cam-card:hover { border-color: var(--accent); }
-    .cam-card.fullscreen-card {
-      position: fixed; inset: 0; z-index: 999; border-radius: 0; aspect-ratio: unset;
+    .sidebar-section { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+    .sidebar-section h3 { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 8px; }
+
+    .cam-btn {
+      width: 100%; text-align: left; padding: 8px 10px; border-radius: 6px;
+      background: none; border: none; color: var(--text); font-size: 0.85rem;
+      cursor: pointer; display: flex; align-items: center; gap: 8px; margin-bottom: 2px;
     }
-    .cam-card video { width: 100%; height: 100%; object-fit: cover; display: block; background: #000; }
+    .cam-btn:hover { background: var(--surface2); }
+    .cam-btn.active { background: var(--accent); color: #fff; }
+    .cam-btn .cam-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
 
-    .cam-label {
-      position: absolute; bottom: 0; left: 0; right: 0;
-      background: linear-gradient(transparent, rgba(0,0,0,0.75));
-      padding: 20px 10px 8px; font-size: 0.72rem;
-      display: flex; align-items: center; justify-content: space-between;
+    .date-btn {
+      width: 100%; text-align: left; padding: 6px 10px; border-radius: 6px;
+      background: none; border: none; color: var(--text); font-size: 0.82rem;
+      cursor: pointer; margin-bottom: 2px;
     }
-    .cam-label span { font-weight: 500; }
-    .badge { font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; background: var(--live); color: #000; font-weight: 600; }
-    .badge.offline { background: var(--error); color: #fff; }
+    .date-btn:hover { background: var(--surface2); }
+    .date-btn.active { background: var(--surface2); color: var(--accent); font-weight: 600; }
 
-    .cam-overlay {
-      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-      background: rgba(0,0,0,0.55); font-size: 0.8rem; color: var(--muted); pointer-events: none;
+    /* ── Clip list ───────────────────────────────────── */
+    .clip-list {
+      flex: 1; overflow-y: auto; padding: 8px;
+      display: flex; flex-direction: column; gap: 4px;
     }
-    .cam-overlay.hidden { display: none; }
-
-    .close-btn {
-      position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.6);
-      border: 1px solid var(--border); color: var(--text); width: 32px; height: 32px;
-      border-radius: 6px; font-size: 1.1rem; cursor: pointer; display: none;
-      align-items: center; justify-content: center; z-index: 1000;
+    .clip-item {
+      padding: 8px 10px; border-radius: 6px; cursor: pointer;
+      background: var(--surface2); border: 1px solid var(--border);
+      font-size: 0.8rem; display: flex; align-items: center; gap: 8px;
+      transition: border-color 0.15s;
     }
-    .cam-card.fullscreen-card .close-btn { display: flex; }
+    .clip-item:hover { border-color: var(--accent); }
+    .clip-item.active { border-color: var(--accent); background: #1a2540; }
+    .clip-time { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+    .clip-size { color: var(--muted); margin-left: auto; font-size: 0.72rem; }
 
-    /* ── PTZ Controls ──────────────────────────────────────────── */
-    .ptz-panel {
-      position: absolute; bottom: 36px; right: 8px;
-      display: none; flex-direction: column; align-items: center; gap: 4px;
-      z-index: 100;
+    /* ── Main player ─────────────────────────────────── */
+    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    .player-wrap {
+      flex: 1; background: #000; display: flex; align-items: center;
+      justify-content: center; position: relative; min-height: 0;
     }
-    .cam-card:hover .ptz-panel,
-    .cam-card.fullscreen-card .ptz-panel { display: flex; }
+    .player-wrap video { max-width: 100%; max-height: 100%; width: 100%; height: 100%; object-fit: contain; }
 
-    .ptz-row { display: flex; gap: 4px; }
-
-    .ptz-btn {
-      width: 30px; height: 30px; background: rgba(0,0,0,0.65);
-      border: 1px solid rgba(255,255,255,0.15); border-radius: 6px;
-      color: #fff; font-size: 0.85rem; cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      transition: background 0.15s; user-select: none; -webkit-user-select: none;
-      touch-action: none;
+    .player-placeholder {
+      display: flex; flex-direction: column; align-items: center; gap: 12px;
+      color: var(--muted); font-size: 0.9rem;
     }
-    .ptz-btn:active, .ptz-btn.held { background: var(--accent); }
+    .player-placeholder .icon { font-size: 3rem; }
 
-    .ptz-zoom { display: flex; flex-direction: column; gap: 4px; }
-
-    .patrol-btn {
-      margin-top: 2px; padding: 3px 8px; font-size: 0.65rem; border-radius: 4px;
-      background: rgba(0,0,0,0.65); border: 1px solid rgba(255,255,255,0.15);
-      color: #fff; cursor: pointer; white-space: nowrap;
+    .player-info {
+      padding: 10px 20px; background: var(--surface); border-top: 1px solid var(--border);
+      display: flex; align-items: center; gap: 16px; flex-shrink: 0; flex-wrap: wrap;
     }
-    .patrol-btn.active { background: #f59e0b; color: #000; border-color: #f59e0b; }
-
-    .preset-bar {
-      display: flex; gap: 3px; margin-top: 2px; flex-wrap: wrap; max-width: 120px;
+    .player-info .label { font-size: 0.75rem; color: var(--muted); }
+    .player-info .value { font-size: 0.85rem; font-weight: 500; }
+    .nav-btn {
+      padding: 5px 14px; border-radius: 6px; background: var(--surface2);
+      border: 1px solid var(--border); color: var(--text); font-size: 0.8rem;
+      cursor: pointer; margin-left: auto;
     }
-    .preset-chip {
-      padding: 2px 6px; font-size: 0.6rem; border-radius: 3px;
-      background: rgba(0,0,0,0.65); border: 1px solid rgba(255,255,255,0.15);
-      color: #fff; cursor: pointer;
-    }
-    .preset-chip:hover { background: var(--accent); }
+    .nav-btn:hover { border-color: var(--accent); }
+    .nav-btn:disabled { opacity: 0.3; cursor: default; }
 
-    @media (max-width: 900px) { #grid { grid-template-columns: repeat(2, 1fr) !important; } }
-    @media (max-width: 500px) { #grid { grid-template-columns: 1fr !important; } }
+    .empty { padding: 24px; text-align: center; color: var(--muted); font-size: 0.82rem; }
+
+    @media (max-width: 700px) {
+      .layout { flex-direction: column; }
+      .sidebar { width: 100%; max-height: 220px; border-right: none; border-bottom: 1px solid var(--border); }
+    }
   </style>
 </head>
 <body>
 
 <header>
-  <h1>&#9679; Camera Monitor</h1>
-  <div id="status-bar"><div id="status-dot"></div><span id="stream-status">Connecting…</span></div>
-  <div id="clock">--:--:--</div>
+  <h1>&#9679; Camera Recordings</h1>
+  <div style="display:flex;align-items:center;gap:16px">
+    <span style="font-size:0.75rem;color:var(--muted)">
+      Server: <input id="server-url" value="https://recordings.uditmathur.uk" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:3px 8px;border-radius:4px;font-size:0.75rem;width:240px" />
+    </span>
+    <div id="clock">--:--:--</div>
+  </div>
 </header>
 
-<div class="toolbar">
-  <label>Layout</label>
-  <select id="layout-select">
-    <option value="4">4 columns</option>
-    <option value="3">3 columns</option>
-    <option value="2">2 columns</option>
-    <option value="1">1 column</option>
-  </select>
-  <label style="margin-left:12px">Relay</label>
-  <input id="relay-url" type="text" value="https://stream.uditmathur.uk" style="width:260px" />
-  <label style="margin-left:12px">PTZ</label>
-  <input id="ptz-url" type="text" value="https://ptz.uditmathur.uk" style="width:220px" />
-  <button onclick="reloadAll()">Reload</button>
+<div class="layout">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <h3>Cameras</h3>
+      <div id="cam-list"><div class="empty">Loading…</div></div>
+    </div>
+    <div class="sidebar-section">
+      <h3>Date</h3>
+      <div id="date-list"><div class="empty">Select a camera</div></div>
+    </div>
+    <div class="sidebar-section" style="flex:1;overflow:hidden;display:flex;flex-direction:column;border-bottom:none">
+      <h3>Clips</h3>
+      <div id="clip-list" class="clip-list"><div class="empty">Select a date</div></div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="player-wrap">
+      <div id="placeholder" class="player-placeholder">
+        <div class="icon">&#128247;</div>
+        <div>Select a clip to play</div>
+      </div>
+      <video id="player" style="display:none" controls></video>
+    </div>
+    <div class="player-info">
+      <div><div class="label">Camera</div><div class="value" id="info-cam">—</div></div>
+      <div><div class="label">Date</div><div class="value" id="info-date">—</div></div>
+      <div><div class="label">Time</div><div class="value" id="info-time">—</div></div>
+      <div><div class="label">Size</div><div class="value" id="info-size">—</div></div>
+      <button class="nav-btn" id="btn-prev" disabled onclick="navigate(-1)">&#9664; Prev</button>
+      <button class="nav-btn" id="btn-next" disabled onclick="navigate(1)">Next &#9654;</button>
+    </div>
+  </div>
 </div>
 
-<div id="grid"></div>
-
 <script>
-  const CAMERAS = [
-    { id: 'camera_01', name: 'Camera 1' },
-    { id: 'camera_02', name: 'Camera 2' },
-  ];
+  let selectedCam = null, selectedDate = null, clips = [], currentClipIdx = -1;
 
-  const grid = document.getElementById('grid');
-  const relayInput = document.getElementById('relay-url');
-  const ptzInput = document.getElementById('ptz-url');
-  const statusEl = document.getElementById('stream-status');
-  let liveCount = 0;
+  function getServer() { return document.getElementById('server-url').value.replace(/\/$/, ''); }
 
-  function getRelay() { return relayInput.value.replace(/\/$/, ''); }
-  function getPtz()   { return ptzInput.value.replace(/\/$/, ''); }
-  function hlsUrl(id) { return `${getRelay()}/api/stream.m3u8?src=${id}`; }
-  function wsUrl(id)  { return `${getRelay().replace('https','wss').replace('http','ws')}/api/ws?src=${id}`; }
-
-  // ── PTZ API ──────────────────────────────────────────────────────────────
-  async function ptzCall(camId, path, method = 'POST', body = {}) {
-    try {
-      const opts = { method, headers: { 'Content-Type': 'application/json' } };
-      if (method === 'POST') opts.body = JSON.stringify(body);
-      const r = await fetch(`${getPtz()}/ptz/${camId}${path}`, opts);
-      return r.json();
-    } catch (e) { console.warn('PTZ error', e); }
+  async function api(path) {
+    const r = await fetch(getServer() + path);
+    return r.json();
   }
 
-  function startMove(camId, pan, tilt, zoom = 0) {
-    ptzCall(camId, '/move', 'POST', { pan, tilt, zoom });
+  function fmtSize(bytes) {
+    if (bytes > 1024*1024*1024) return (bytes/1024/1024/1024).toFixed(1) + ' GB';
+    if (bytes > 1024*1024) return (bytes/1024/1024).toFixed(1) + ' MB';
+    return (bytes/1024).toFixed(0) + ' KB';
   }
-  function stopMove(camId) { ptzCall(camId, '/stop'); }
 
-  // ── PTZ panel builder ─────────────────────────────────────────────────────
-  function buildPtzPanel(camId) {
-    const panel = document.createElement('div');
-    panel.className = 'ptz-panel';
-
-    const speed = 0.5;
-
-    function btn(label, onDown, title = '') {
-      const b = document.createElement('button');
-      b.className = 'ptz-btn';
-      b.innerHTML = label;
-      b.title = title;
-
-      const start = (e) => { e.stopPropagation(); b.classList.add('held'); onDown(); };
-      const stop  = (e) => { e.stopPropagation(); b.classList.remove('held'); stopMove(camId); };
-
-      b.addEventListener('mousedown', start);
-      b.addEventListener('mouseup', stop);
-      b.addEventListener('mouseleave', stop);
-      b.addEventListener('touchstart', start, { passive: true });
-      b.addEventListener('touchend', stop);
-      return b;
-    }
-
-    // D-pad
-    const up    = btn('&#9650;', () => startMove(camId, 0, speed),   'Tilt Up');
-    const down  = btn('&#9660;', () => startMove(camId, 0, -speed),  'Tilt Down');
-    const left  = btn('&#9664;', () => startMove(camId, -speed, 0),  'Pan Left');
-    const right = btn('&#9654;', () => startMove(camId, speed, 0),   'Pan Right');
-    const home  = btn('&#9632;', () => stopMove(camId), 'Stop');
-
-    const row1 = document.createElement('div'); row1.className = 'ptz-row';
-    row1.appendChild(up);
-    const row2 = document.createElement('div'); row2.className = 'ptz-row';
-    row2.append(left, home, right);
-    const row3 = document.createElement('div'); row3.className = 'ptz-row';
-    row3.appendChild(down);
-
-    // Zoom
-    const zoomIn  = btn('+', () => startMove(camId, 0, 0, speed),  'Zoom In');
-    const zoomOut = btn('&#8722;', () => startMove(camId, 0, 0, -speed), 'Zoom Out');
-    const zoomCol = document.createElement('div'); zoomCol.className = 'ptz-zoom';
-    zoomCol.append(zoomIn, zoomOut);
-
-    const dpadZoom = document.createElement('div'); dpadZoom.className = 'ptz-row';
-    const dpad = document.createElement('div');
-    dpad.style.display = 'flex'; dpad.style.flexDirection = 'column'; dpad.style.gap = '4px';
-    dpad.append(row1, row2, row3);
-    dpadZoom.append(dpad, zoomCol);
-    panel.appendChild(dpadZoom);
-
-    // Save preset button
-    const saveBtn = document.createElement('button');
-    saveBtn.className = 'patrol-btn';
-    saveBtn.textContent = '+ Save Preset';
-    saveBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const name = prompt('Preset name:', `Preset ${Date.now()}`);
-      if (!name) return;
-      const r = await ptzCall(camId, '/preset/save', 'POST', { name });
-      if (r?.ok) {
-        alert(`Saved: ${name}`);
-        location.reload();
-      } else alert(r?.error || 'Failed to save preset');
+  // ── Load cameras ──────────────────────────────────────────────────────────
+  async function loadCameras() {
+    const cams = await api('/recordings');
+    const el = document.getElementById('cam-list');
+    if (!cams.length) { el.innerHTML = '<div class="empty">No recordings found</div>'; return; }
+    el.innerHTML = '';
+    cams.forEach((cam, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'cam-btn';
+      btn.innerHTML = `<span class="cam-dot"></span>${cam.replace('_', ' ').toUpperCase()}`;
+      btn.onclick = () => selectCamera(cam, btn);
+      el.appendChild(btn);
+      if (i === 0) btn.click();
     });
-    panel.appendChild(saveBtn);
+  }
 
-    // Patrol button
-    let patrolling = false;
-    const patrolBtn = document.createElement('button');
-    patrolBtn.className = 'patrol-btn';
-    patrolBtn.textContent = '&#9654; Patrol';
-    patrolBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      if (!patrolling) {
-        const r = await ptzCall(camId, '/patrol/start', 'POST', { interval: 10 });
-        if (r?.ok) { patrolling = true; patrolBtn.textContent = '&#9646;&#9646; Stop Patrol'; patrolBtn.classList.add('active'); }
-        else alert(r?.error || 'Patrol failed — make sure presets are saved on camera');
-      } else {
-        await ptzCall(camId, '/patrol/stop');
-        patrolling = false; patrolBtn.textContent = '&#9654; Patrol'; patrolBtn.classList.remove('active');
-      }
+  // ── Select camera ─────────────────────────────────────────────────────────
+  async function selectCamera(cam, btn) {
+    selectedCam = cam;
+    document.querySelectorAll('.cam-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('date-list').innerHTML = '<div class="empty">Loading…</div>';
+    document.getElementById('clip-list').innerHTML = '<div class="empty">Select a date</div>';
+
+    const dates = await api(`/recordings/${cam}`);
+    const el = document.getElementById('date-list');
+    if (!dates.length) { el.innerHTML = '<div class="empty">No recordings</div>'; return; }
+    el.innerHTML = '';
+    dates.forEach((date, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'date-btn';
+      btn.textContent = date;
+      btn.onclick = () => selectDate(date, btn);
+      el.appendChild(btn);
+      if (i === 0) btn.click();
     });
-    panel.appendChild(patrolBtn);
+  }
 
-    // Preset chips
-    const presetBar = document.createElement('div');
-    presetBar.className = 'preset-bar';
-    ptzCall(camId, '/presets', 'GET').then(presets => {
-      if (!Array.isArray(presets)) return;
-      presets.forEach(p => {
-        const chip = document.createElement('button');
-        chip.className = 'preset-chip';
-        chip.textContent = p.name || p.token;
-        chip.title = `Go to preset ${p.name}`;
-        chip.addEventListener('click', (e) => { e.stopPropagation(); ptzCall(camId, '/goto', 'POST', { presetToken: p.token }); });
-        presetBar.appendChild(chip);
-      });
-      if (presets.length) panel.appendChild(presetBar);
+  // ── Select date ───────────────────────────────────────────────────────────
+  async function selectDate(date, btn) {
+    selectedDate = date;
+    document.querySelectorAll('.date-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('clip-list').innerHTML = '<div class="empty">Loading…</div>';
+
+    clips = await api(`/recordings/${selectedCam}/${date}`);
+    const el = document.getElementById('clip-list');
+    if (!clips.length) { el.innerHTML = '<div class="empty">No clips</div>'; return; }
+    el.innerHTML = '';
+    clips.forEach((clip, i) => {
+      const item = document.createElement('div');
+      item.className = 'clip-item';
+      item.id = `clip-${i}`;
+      item.innerHTML = `<span>&#9654;</span><span class="clip-time">${clip.time}</span><span class="clip-size">${fmtSize(clip.size)}</span>`;
+      item.onclick = () => playClip(i);
+      el.appendChild(item);
     });
-
-    return panel;
+    playClip(0);
   }
 
-  // ── Camera card ───────────────────────────────────────────────────────────
-  function buildCard(cam) {
-    const card = document.createElement('div');
-    card.className = 'cam-card';
-    card.id = `card-${cam.id}`;
+  // ── Play clip ─────────────────────────────────────────────────────────────
+  function playClip(idx) {
+    if (idx < 0 || idx >= clips.length) return;
+    currentClipIdx = idx;
+    const clip = clips[idx];
+    const url = `${getServer()}/recordings/${selectedCam}/${selectedDate}/${clip.name}`;
 
-    const video = document.createElement('video');
-    video.muted = true; video.autoplay = true; video.playsInline = true;
+    document.querySelectorAll('.clip-item').forEach(el => el.classList.remove('active'));
+    const el = document.getElementById(`clip-${idx}`);
+    if (el) { el.classList.add('active'); el.scrollIntoView({ block: 'nearest' }); }
 
-    const overlay = document.createElement('div');
-    overlay.className = 'cam-overlay';
-    overlay.textContent = 'Connecting…';
+    const video = document.getElementById('player');
+    const placeholder = document.getElementById('placeholder');
+    video.style.display = 'block';
+    placeholder.style.display = 'none';
+    video.src = url;
+    video.play().catch(() => {});
 
-    const label = document.createElement('div');
-    label.className = 'cam-label';
-    label.innerHTML = `<span>${cam.name}</span><span class="badge offline" id="badge-${cam.id}">OFFLINE</span>`;
+    document.getElementById('info-cam').textContent = selectedCam.replace('_', ' ').toUpperCase();
+    document.getElementById('info-date').textContent = selectedDate;
+    document.getElementById('info-time').textContent = clip.time;
+    document.getElementById('info-size').textContent = fmtSize(clip.size);
+    document.getElementById('btn-prev').disabled = idx === 0;
+    document.getElementById('btn-next').disabled = idx === clips.length - 1;
 
-    const closeBtn = document.createElement('button');
-    closeBtn.className = 'close-btn';
-    closeBtn.innerHTML = '&#10005;';
-    closeBtn.addEventListener('click', (e) => { e.stopPropagation(); card.classList.remove('fullscreen-card'); });
-
-    const ptzPanel = buildPtzPanel(cam.id);
-
-    card.append(video, overlay, label, closeBtn, ptzPanel);
-
-    card.addEventListener('click', () => {
-      if (!card.classList.contains('fullscreen-card')) card.classList.add('fullscreen-card');
-    });
-
-    initStream(cam.id, video, overlay);
-    return card;
+    // Auto-play next clip
+    video.onended = () => { if (idx + 1 < clips.length) playClip(idx + 1); };
   }
 
-  function initStream(id, video, overlay) {
-    const badge = document.getElementById(`badge-${id}`);
-    let hls, retryTimer;
+  function navigate(dir) { playClip(currentClipIdx + dir); }
 
-    const setLive = () => {
-      overlay.classList.add('hidden');
-      if (badge && badge.classList.contains('offline')) {
-        badge.textContent = 'LIVE'; badge.classList.remove('offline');
-        liveCount++; updateStatus();
-      }
-    };
-    const setOffline = () => {
-      overlay.classList.remove('hidden'); overlay.textContent = 'Offline';
-      if (badge) { badge.textContent = 'OFFLINE'; badge.classList.add('offline'); }
-    };
-
-    function connect() {
-      if (hls) { hls.destroy(); hls = null; }
-      clearTimeout(retryTimer);
-
-      if (Hls.isSupported()) {
-        hls = new Hls({
-          lowLatencyMode: true,
-          maxBufferLength: 15,
-          maxMaxBufferLength: 30,
-          liveSyncDurationCount: 2,
-          liveMaxLatencyDurationCount: 5,
-          fragLoadingRetryDelay: 1000,
-          fragLoadingMaxRetry: 6,
-          manifestLoadingRetryDelay: 1000,
-          manifestLoadingMaxRetry: 6,
-          levelLoadingRetryDelay: 1000,
-          levelLoadingMaxRetry: 6,
-        });
-        hls.loadSource(hlsUrl(id));
-        hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED, () => { video.play().catch(() => {}); });
-        hls.on(Hls.Events.FRAG_LOADED, () => setLive());
-        hls.on(Hls.Events.ERROR, (_, d) => {
-          if (d.fatal) { setOffline(); retryTimer = setTimeout(connect, 5000); }
-        });
-      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = hlsUrl(id);
-        video.onloadedmetadata = () => { video.play().catch(() => {}); setLive(); };
-        video.onerror = () => { setOffline(); retryTimer = setTimeout(connect, 5000); };
-      }
-    }
-
-    connect();
-  }
-
-  function updateStatus() {
-    statusEl.textContent = `${liveCount} / ${CAMERAS.length} cameras live`;
-  }
-
-  function reloadAll() { liveCount = 0; grid.innerHTML = ''; renderGrid(); }
-
-  function renderGrid() {
-    CAMERAS.forEach(cam => grid.appendChild(buildCard(cam)));
-    updateStatus();
-  }
-
-  document.getElementById('layout-select').addEventListener('change', (e) => {
-    grid.style.gridTemplateColumns = `repeat(${e.target.value}, 1fr)`;
-  });
-
+  // Clock
   setInterval(() => {
     document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-GB');
   }, 1000);
 
-  renderGrid();
+  loadCameras();
 </script>
 </body>
 </html>
