@@ -5,6 +5,7 @@ streams:
   #   Dahua:      rtsp://admin:onlineudit@192.168.1.10:554/cam/realmonitor?channel=1&subtype=0
   #   Generic:    rtsp://admin:onlineudit@192.168.1.10:554/h264
   camera_01: onvif://admin:onlineudit@192.168.1.10:8000?subtype=PROFILE_1792003050
+  camera_02: onvif://admin:onlineudit@192.168.1.26:8000
 
 api:
   listen: :1984
