@@ -233,6 +233,22 @@
     dpadZoom.append(dpad, zoomCol);
     panel.appendChild(dpadZoom);
 
+    // Save preset button
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'patrol-btn';
+    saveBtn.textContent = '+ Save Preset';
+    saveBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const name = prompt('Preset name:', `Preset ${Date.now()}`);
+      if (!name) return;
+      const r = await ptzCall(camId, '/preset/save', 'POST', { name });
+      if (r?.ok) {
+        alert(`Saved: ${name}`);
+        location.reload();
+      } else alert(r?.error || 'Failed to save preset');
+    });
+    panel.appendChild(saveBtn);
+
     // Patrol button
     let patrolling = false;
     const patrolBtn = document.createElement('button');

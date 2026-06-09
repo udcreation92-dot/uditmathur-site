@@ -126,6 +126,23 @@ app.get('/ptz/:camId/presets', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Set preset ────────────────────────────────────────────────────────────
+app.post('/ptz/:camId/preset/save', async (req, res) => {
+  try {
+    const cam = CAMERAS[req.params.camId];
+    if (!cam) return res.status(404).json({ error: 'Camera not found' });
+    const { name } = req.body;
+    const token = await getProfileToken(req.params.camId);
+    const resp = await onvif(cam, 'ptz', `
+      <tptz:SetPreset>
+        <tptz:ProfileToken>${token}</tptz:ProfileToken>
+        <tptz:PresetName>${name || 'Preset'}</tptz:PresetName>
+      </tptz:SetPreset>`);
+    const match = resp.match(/PresetToken[^>]*>([^<]+)</);
+    res.json({ ok: true, presetToken: match ? match[1] : null });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Go to preset ───────────────────────────────────────────────────────────
 app.post('/ptz/:camId/goto', async (req, res) => {
   try {
@@ -185,6 +202,19 @@ app.get('/patrol/status', (req, res) => {
   const status = {};
   Object.keys(CAMERAS).forEach(id => { status[id] = !!patrolTimers[id]; });
   res.json(status);
+});
+
+app.get('/ptz/:camId/presets/raw', async (req, res) => {
+  try {
+    const cam = CAMERAS[req.params.camId];
+    if (!cam) return res.status(404).json({ error: 'Camera not found' });
+    const token = await getProfileToken(req.params.camId);
+    const resp = await onvif(cam, 'ptz', `
+      <tptz:GetPresets>
+        <tptz:ProfileToken>${token}</tptz:ProfileToken>
+      </tptz:GetPresets>`);
+    res.set('Content-Type', 'text/plain').send(resp);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/health', (_, res) => res.json({ ok: true }));
