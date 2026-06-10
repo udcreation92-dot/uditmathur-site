@@ -1,0 +1,15 @@
+[[redirects]]
+  from = "/cameras"
+  to = "/cameras/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/cameras/*"
+  to = "/cameras/index.html"
+  status = 200
+
+[[headers]]
+  for = "/cameras/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"

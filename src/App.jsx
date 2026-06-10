@@ -6,6 +6,7 @@ import TaskForm from './components/TaskForm'
 import Header from './components/Header'
 import LocationManager from './components/LocationManager'
 import LoginPage from './components/LoginPage'
+import { useNotifications } from './hooks/useNotifications'
 
 export default function App() {
   const [view, setView] = useState('dashboard')
@@ -95,6 +96,9 @@ export default function App() {
     if (!window.confirm('Delete this task?')) return
     await supabase.from('tasks').delete().eq('id', id)
   }
+
+  // Trigger notifications whenever tasks change
+  useNotifications(tasks)
 
   async function signOut() {
     await supabase.auth.signOut()
