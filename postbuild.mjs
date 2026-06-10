@@ -48,12 +48,10 @@ function copyDir(src, dest) {
 copyDir(path.resolve('accounts/dist'), path.resolve('dist/accounts'))
 console.log('✓ accounts/dist → dist/accounts')
 
-// ── 5. Write _redirects for SPA routing ──────────────────────────────────────
-const redirects = [
-  '/accounts/*  /accounts/index.html  200',
-  '/task/*       /task/index.html       200',
-].join('\n')
-fs.writeFileSync(path.resolve('dist/_redirects'), redirects)
-console.log('✓ dist/_redirects written')
+// ── 5. Write _redirects ───────────────────────────────────────────────────────
+// No wildcard SPA rewrites — the actual index.html files exist at their paths,
+// so Cloudflare serves them directly. Wildcard rules caused infinite-loop errors.
+fs.writeFileSync(path.resolve('dist/_redirects'), '')
+console.log('✓ dist/_redirects written (empty)')
 
 console.log('\n✅ Combined build complete → dist/')
