@@ -48,10 +48,9 @@ function copyDir(src, dest) {
 copyDir(path.resolve('accounts/dist'), path.resolve('dist/accounts'))
 console.log('✓ accounts/dist → dist/accounts')
 
-// ── 5. Write _redirects ───────────────────────────────────────────────────────
-// No wildcard SPA rewrites — the actual index.html files exist at their paths,
-// so Cloudflare serves them directly. Wildcard rules caused infinite-loop errors.
-fs.writeFileSync(path.resolve('dist/_redirects'), '')
-console.log('✓ dist/_redirects written (empty)')
+// ── 5. Remove _redirects (wildcard rules caused infinite-loop errors) ─────────
+const redirectsPath = path.resolve('dist/_redirects')
+if (fs.existsSync(redirectsPath)) fs.unlinkSync(redirectsPath)
+console.log('✓ dist/_redirects removed')
 
 console.log('\n✅ Combined build complete → dist/')
