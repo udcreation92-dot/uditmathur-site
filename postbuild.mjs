@@ -29,6 +29,11 @@ fs.copyFileSync(path.resolve('landing.html'), path.resolve('dist/index.html'))
 console.log('✓ Landing page → dist/index.html')
 
 // ── 3. Build accounts app ─────────────────────────────────────────────────────
+console.log('\nInstalling accounts dependencies…')
+execSync('npm install', {
+  cwd: path.resolve('accounts'),
+  stdio: 'inherit',
+})
 console.log('\nBuilding accounts app…')
 execSync('npm run build', {
   cwd: path.resolve('accounts'),
