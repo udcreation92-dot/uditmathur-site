@@ -6,6 +6,7 @@ streams:
   #   Generic:    rtsp://admin:onlineudit@192.168.1.10:554/h264
   camera_01: onvif://admin:onlineudit@192.168.1.10:8000?subtype=PROFILE_1792003050
   camera_02: onvif://admin:onlineudit@192.168.1.26:8000?subtype=1
+  camera_03: onvif://admin:onlineudit@192.168.0.189:8000?subtype=1
 
 api:
   listen: :1984
@@ -16,6 +17,9 @@ rtsp:
 
 webrtc:
   listen: :8555/tcp
+
+hls:
+  windows: 2
 
 log:
   level: info

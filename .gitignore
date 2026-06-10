@@ -1,0 +1,19 @@
+# Secrets
+.env
+.env.local
+accounts/.env
+accounts/.env.local
+
+# Dependencies
+node_modules/
+accounts/node_modules/
+
+# Build output (dist is committed for Cloudflare Pages)
+# accounts/dist kept out — built by Cloudflare Pages from source
+accounts/dist/
+
+# Claude/agent internals
+.agents/
+.claude/
+skills-lock.json
+.mcp.json

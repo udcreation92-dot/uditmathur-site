@@ -1,0 +1,18 @@
+# Place this at: C:\Users\YOUR_USERNAME\.cloudflared\config.yml
+# Replace <TUNNEL-ID> with the ID printed when you ran: cloudflared tunnel create home-cameras
+
+tunnel: <TUNNEL-ID>
+credentials-file: C:\Users\YOUR_USERNAME\.cloudflared\<TUNNEL-ID>.json
+
+ingress:
+  - hostname: stream.uditmathur.uk
+    service: http://localhost:1984
+  - service: http_status:404
+
+# Setup steps (run once in PowerShell as Administrator):
+#
+#   1. cloudflared tunnel login
+#   2. cloudflared tunnel create home-cameras
+#   3. cloudflared tunnel route dns home-cameras stream.uditmathur.uk
+#   4. cloudflared service install
+#   5. net start cloudflared
