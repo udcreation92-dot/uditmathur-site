@@ -3,27 +3,45 @@ import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 
 const TYPES = ['asset', 'liability', 'equity', 'income', 'expense']
+const ROLES = ['other', 'savings', 'current', 'credit_card', 'trading', 'investment']
+const ROLE_LABELS = {
+  other: 'Other', savings: 'Savings', current: 'Current',
+  credit_card: 'Credit Card', trading: 'Trading', investment: 'Investment',
+}
+const ROLE_COLORS = {
+  savings:     'bg-green-100 text-green-700',
+  current:     'bg-blue-100 text-blue-700',
+  credit_card: 'bg-red-100 text-red-700',
+  trading:     'bg-purple-100 text-purple-700',
+  investment:  'bg-indigo-100 text-indigo-700',
+  other:       'bg-gray-100 text-gray-500',
+}
 
 export default function ChartOfAccounts() {
-  const [books,    setBooks]    = useState([])
-  const [accounts, setAccounts] = useState([])
-  const [links,    setLinks]    = useState([])
-  const [selBook,  setSelBook]  = useState('')
-  const [form,     setForm]     = useState({ name: '', code: '', type: 'asset' })
-  const [linkForm, setLinkForm] = useState({ accA: '', accB: '' })
-  const [loading,  setLoading]  = useState(true)
+  const [books,        setBooks]        = useState([])
+  const [accounts,     setAccounts]     = useState([])
+  const [settingsMap,  setSettingsMap]  = useState({})
+  const [links,        setLinks]        = useState([])
+  const [selBook,      setSelBook]      = useState('')
+  const [form,         setForm]         = useState({ name: '', code: '', type: 'asset' })
+  const [linkForm,     setLinkForm]     = useState({ accA: '', accB: '' })
+  const [editId,       setEditId]       = useState(null)
+  const [settingsForm, setSettingsForm] = useState({ role: 'other', rate: '', minBalance: '' })
+  const [loading,      setLoading]      = useState(true)
 
   async function load() {
-    const [{ data: bk }, { data: ac }, { data: lk }] = await Promise.all([
+    const [{ data: bk }, { data: ac }, { data: lk }, { data: st }] = await Promise.all([
       supabase.from('books').select('id, name').order('name'),
       supabase.from('accounts').select('*, books(name)').order('type').order('name'),
       supabase.from('inter_ledger_links').select(`id,
         account_a:account_a_id(id, name, books(name)),
         account_b:account_b_id(id, name, books(name))`),
+      supabase.from('account_settings').select('*'),
     ])
     setBooks(bk || [])
     setAccounts(ac || [])
     setLinks(lk || [])
+    setSettingsMap(Object.fromEntries((st || []).map(s => [s.account_id, s])))
     if (!selBook && bk?.length) setSelBook(bk[0].id)
     setLoading(false)
   }
@@ -66,6 +84,31 @@ export default function ChartOfAccounts() {
   async function deleteLink(id) {
     await supabase.from('inter_ledger_links').delete().eq('id', id)
     load()
+  }
+
+  function openSettings(a) {
+    const s = settingsMap[a.id]
+    setSettingsForm({
+      role:       s?.account_role  || 'other',
+      rate:       s?.interest_rate_pa != null ? String(s.interest_rate_pa) : '',
+      minBalance: s?.min_balance   != null ? String(s.min_balance) : '',
+    })
+    setEditId(editId === a.id ? null : a.id)
+  }
+
+  async function saveSettings(accountId) {
+    const payload = {
+      account_id:       accountId,
+      account_role:     settingsForm.role,
+      interest_rate_pa: parseFloat(settingsForm.rate)       || 0,
+      min_balance:      parseFloat(settingsForm.minBalance) || 0,
+      updated_at:       new Date().toISOString(),
+    }
+    const { error } = await supabase
+      .from('account_settings')
+      .upsert(payload, { onConflict: 'account_id' })
+    if (error) toast.error(error.message)
+    else { toast.success('Settings saved'); setEditId(null); load() }
   }
 
   if (loading) return <Spinner />
@@ -117,25 +160,143 @@ export default function ChartOfAccounts() {
               <th className="table-head">Code</th>
               <th className="table-head">Account Name</th>
               <th className="table-head">Type</th>
-              <th className="table-head w-16"></th>
+              <th className="table-head">Role</th>
+              <th className="table-head text-right">Rate / Min Bal</th>
+              <th className="table-head w-20"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {filtered.length === 0 && (
-              <tr><td colSpan={4} className="table-cell text-center text-gray-400 py-6">No accounts in this book</td></tr>
-            )}
-            {filtered.map(a => (
-              <tr key={a.id} className="hover:bg-gray-50">
-                <td className="table-cell text-xs text-gray-400">{a.code}</td>
-                <td className="table-cell font-medium">{a.name}</td>
-                <td className="table-cell">
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{a.type}</span>
-                </td>
-                <td className="table-cell">
-                  <button onClick={() => deleteAccount(a.id)} className="text-red-400 hover:text-red-600 text-xs">Del</button>
+              <tr>
+                <td colSpan={6} className="table-cell text-center text-gray-400 py-6">
+                  No accounts in this book
                 </td>
               </tr>
-            ))}
+            )}
+            {filtered.map(a => {
+              const s    = settingsMap[a.id]
+              const role = s?.account_role || 'other'
+              return (
+                <React.Fragment key={a.id}>
+                  <tr className={`hover:bg-gray-50 ${editId === a.id ? 'bg-brand-50' : ''}`}>
+                    <td className="table-cell text-xs text-gray-400">{a.code}</td>
+                    <td className="table-cell font-medium">{a.name}</td>
+                    <td className="table-cell">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                        {a.type}
+                      </span>
+                    </td>
+                    <td className="table-cell">
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${ROLE_COLORS[role]}`}>
+                        {ROLE_LABELS[role]}
+                      </span>
+                    </td>
+                    <td className="table-cell text-right text-xs text-gray-500">
+                      {s ? (
+                        <>
+                          {s.interest_rate_pa > 0 ? `${Number(s.interest_rate_pa).toFixed(2)}% p.a.` : '—'}
+                          {s.min_balance > 0 && (
+                            <span className="ml-1 text-gray-400">
+                              / ₹{Number(s.min_balance).toLocaleString('en-IN')}
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-gray-300">not set</span>
+                      )}
+                    </td>
+                    <td className="table-cell">
+                      <div className="flex items-center gap-2 justify-end">
+                        <button
+                          onClick={() => openSettings(a)}
+                          className={`text-xs transition-colors ${
+                            editId === a.id
+                              ? 'text-brand-600 font-semibold'
+                              : 'text-gray-400 hover:text-brand-600'
+                          }`}
+                          title="Fund optimizer settings"
+                        >
+                          ⚙
+                        </button>
+                        <button
+                          onClick={() => deleteAccount(a.id)}
+                          className="text-red-400 hover:text-red-600 text-xs"
+                        >
+                          Del
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  {editId === a.id && (
+                    <tr className="bg-brand-50">
+                      <td colSpan={6} className="px-5 py-4">
+                        <div className="space-y-3">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                            Fund optimizer settings — {a.name}
+                          </p>
+                          <div className="flex flex-wrap gap-3 items-end">
+                            <div>
+                              <label className="label">Role</label>
+                              <select
+                                className="input w-40"
+                                value={settingsForm.role}
+                                onChange={e => setSettingsForm(f => ({ ...f, role: e.target.value }))}
+                              >
+                                {ROLES.map(r => (
+                                  <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="label">Interest rate (% p.a.)</label>
+                              <input
+                                className="input w-36"
+                                type="number"
+                                min="0"
+                                step="0.001"
+                                placeholder="e.g. 7.5"
+                                value={settingsForm.rate}
+                                onChange={e => setSettingsForm(f => ({ ...f, rate: e.target.value }))}
+                              />
+                            </div>
+                            <div>
+                              <label className="label">Min balance (AMB / MAB) ₹</label>
+                              <input
+                                className="input w-44"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder="e.g. 10000"
+                                value={settingsForm.minBalance}
+                                onChange={e => setSettingsForm(f => ({ ...f, minBalance: e.target.value }))}
+                              />
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => saveSettings(a.id)}
+                                className="btn-primary text-sm"
+                              >
+                                Save
+                              </button>
+                              <button
+                                onClick={() => setEditId(null)}
+                                className="btn-secondary text-sm"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-400">
+                            Role determines how this account is treated in the Fund Optimizer.
+                            Leave as <em>Other</em> to exclude it from analysis.
+                          </p>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              )
+            })}
           </tbody>
         </table>
       </div>

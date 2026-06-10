@@ -14,6 +14,8 @@ import BulkImport from './pages/BulkImport'
 import Reconciliation from './pages/Reconciliation'
 import Reports from './pages/Reports'
 import AverageBalance from './pages/AverageBalance'
+import Commitments from './pages/Commitments'
+import FundOptimizer from './pages/FundOptimizer'
 
 function ProtectedRoute({ session, children }) {
   if (!session) return <Navigate to="/login" replace />
@@ -58,6 +60,8 @@ export default function App() {
           <Route path="reconciliation" element={<Reconciliation />} />
           <Route path="reports" element={<Reports />} />
           <Route path="avg-balance" element={<AverageBalance />} />
+          <Route path="commitments" element={<Commitments />} />
+          <Route path="fund-optimizer" element={<FundOptimizer />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

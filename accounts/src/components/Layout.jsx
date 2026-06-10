@@ -12,7 +12,9 @@ const nav = [
   { to: '/trial-balance',  label: 'Trial Balance',   icon: '⚖️' },
   { to: '/reconciliation', label: 'Reconciliation',  icon: '🔄' },
   { to: '/reports',        label: 'Reports',         icon: '📊' },
-  { to: '/avg-balance',    label: 'Avg Balance',     icon: '📈' },
+  { to: '/avg-balance',     label: 'Avg Balance',     icon: '📈' },
+  { to: '/commitments',    label: 'Commitments',     icon: '📅' },
+  { to: '/fund-optimizer', label: 'Fund Optimizer',  icon: '💰' },
   { to: '/import',         label: 'Bulk Import',     icon: '📥' },
 ]
 
