@@ -7,8 +7,10 @@ import Header from './components/Header'
 import LocationManager from './components/LocationManager'
 import LoginPage from './components/LoginPage'
 import { useNotifications } from './hooks/useNotifications'
+import { usePushSubscription } from './hooks/usePushSubscription'
 
 export default function App() {
+  const { status: pushStatus, requestPermission } = usePushSubscription()
   const [view, setView] = useState('dashboard')
   const [tasks, setTasks] = useState([])
   const [locations, setLocations] = useState([])
@@ -136,6 +138,14 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50">
       <Header view={view} onViewChange={setView} onAdd={openAdd} onSignOut={signOut} />
+
+      {/* Push notification prompt — shown once until subscribed */}
+      {pushStatus === 'idle' && Notification.permission === 'default' && (
+        <div className="bg-blue-50 border-b border-blue-100 px-4 py-2 flex items-center justify-between text-sm">
+          <span className="text-blue-700">🔔 Get alerts when tasks are due — even when the browser is closed</span>
+          <button onClick={requestPermission} className="ml-4 bg-blue-600 text-white px-3 py-1 rounded-full text-xs font-medium hover:bg-blue-700">Enable</button>
+        </div>
+      )}
 
       <main className="max-w-2xl mx-auto px-4 py-6 pb-24 md:pb-6">
         {loading ? (
