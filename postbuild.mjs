@@ -60,4 +60,14 @@ function deleteRedirectsFiles(dir) {
 }
 deleteRedirectsFiles(path.resolve('dist'))
 
+// Debug: list all files in dist so we can verify in CI logs
+function listFiles(dir, indent = '') {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = path.join(dir, entry.name)
+    if (entry.isDirectory()) listFiles(fullPath, indent + '  ')
+    else console.log(indent + fullPath.replace(path.resolve('dist'), 'dist'))
+  }
+}
+console.log('\n📦 Final dist contents:')
+listFiles(path.resolve('dist'))
 console.log('\n✅ Combined build complete → dist/')
