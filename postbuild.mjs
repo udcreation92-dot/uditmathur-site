@@ -48,9 +48,16 @@ function copyDir(src, dest) {
 copyDir(path.resolve('accounts/dist'), path.resolve('dist/accounts'))
 console.log('✓ accounts/dist → dist/accounts')
 
-// ── 5. Remove _redirects (wildcard rules caused infinite-loop errors) ─────────
-const redirectsPath = path.resolve('dist/_redirects')
-if (fs.existsSync(redirectsPath)) fs.unlinkSync(redirectsPath)
-console.log('✓ dist/_redirects removed')
+// ── 5. Remove ALL _redirects files anywhere in dist/ ─────────────────────────
+// Cloudflare Workers Assets errors on wildcard redirect rules (infinite loop).
+// Neither app uses URL-based SPA routing so no redirects are needed.
+function deleteRedirectsFiles(dir) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = path.join(dir, entry.name)
+    if (entry.isDirectory()) deleteRedirectsFiles(fullPath)
+    else if (entry.name === '_redirects') { fs.unlinkSync(fullPath); console.log(`✓ Removed ${fullPath}`) }
+  }
+}
+deleteRedirectsFiles(path.resolve('dist'))
 
 console.log('\n✅ Combined build complete → dist/')
