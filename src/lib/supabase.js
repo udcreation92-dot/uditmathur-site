@@ -4,7 +4,12 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 if (!supabaseUrl || !supabaseKey) {
-  console.error('Missing Supabase env vars. Copy .env.example to .env.local and fill in your project URL and anon key.')
+  console.error('Missing Supabase env vars. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Cloudflare dashboard.')
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey)
+// Use placeholder values so createClient does not throw during module evaluation
+// when env vars are absent (CI build without secrets configured).
+export const supabase = createClient(
+  supabaseUrl ?? 'https://placeholder.supabase.co',
+  supabaseKey ?? 'placeholder-anon-key',
+)
