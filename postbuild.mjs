@@ -53,9 +53,14 @@ function copyDir(src, dest) {
 copyDir(path.resolve('accounts/dist'), path.resolve('dist/accounts'))
 console.log('✓ accounts/dist → dist/accounts')
 
-// ── 5. Remove ALL _redirects files anywhere in dist/ ─────────────────────────
-// Cloudflare Workers Assets errors on wildcard redirect rules (infinite loop).
-// Neither app uses URL-based SPA routing so no redirects are needed.
+// ── 5. Copy _worker.js into dist/ for Cloudflare Pages advanced mode ─────────
+// Pages looks for _worker.js inside the output directory, not the repo root.
+// It automatically provides env.ASSETS to the worker (no wrangler.toml binding needed).
+fs.copyFileSync(path.resolve('_worker.js'), path.resolve('dist/_worker.js'))
+console.log('✓ _worker.js → dist/_worker.js')
+
+// ── 6. Remove ALL _redirects files anywhere in dist/ ─────────────────────────
+// Custom worker handles all routing so _redirects rules are not needed.
 function deleteRedirectsFiles(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const fullPath = path.join(dir, entry.name)
