@@ -71,15 +71,15 @@ function calcAmbLockin(accountType, ambTarget, priorDr, priorCr, monthMovements)
   // Reconstruct daily closing balances from month start to today
   let running = normalBalance(accountType, priorDr || 0, priorCr || 0)
   let elapsedSum = 0
-  for (let d = 1; d <= todayDate; d++) {
+  for (let d = 1; d < todayDate; d++) {
     const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
     const mov = monthMovements?.[key]
     if (mov) running += normalBalance(accountType, mov.dr, mov.cr)
     elapsedSum += running
   }
 
-  const remainDays = totalDays - todayDate
-  if (remainDays <= 0) return 0 // last day of month — nothing left to lock
+  const remainDays = totalDays - todayDate + 1 // today counts as a remaining day
+  if (remainDays <= 0) return 0
   return Math.max(0, (ambTarget * totalDays - elapsedSum) / remainDays)
 }
 

@@ -103,8 +103,8 @@ export default function AverageBalance() {
       if (mov) {
         runningBal += normalBalance(selAccObj.type, mov.dr, mov.cr)
       }
-      const isPast   = isBefore(day, today) || isToday(day)
-      const isFuture = isAfter(day, today)
+      const isPast   = isBefore(day, today)
+      const isFuture = !isBefore(day, today)
       dayRows.push({ date: day, key, balance: runningBal, isPast, isFuture, hasTxn: !!mov })
     }
 
@@ -117,6 +117,10 @@ export default function AverageBalance() {
     const elapsedSum   = elapsedRows.reduce((s, r) => s + r.balance, 0)
     const currentAMB   = elapsedDays > 0 ? elapsedSum / elapsedDays : 0
 
+    // Today's balance (today is a remaining day — still changing)
+    const todayRow   = dayRows.find(r => isToday(r.date))
+    const currentBal = todayRow?.balance ?? elapsedRows[elapsedRows.length - 1]?.balance ?? 0
+
     // Required balance to hit target
     let requiredBal    = null
     let targetMet      = false
@@ -124,22 +128,21 @@ export default function AverageBalance() {
       const T  = parseFloat(target)
       const req = (T * totalDays - elapsedSum) / remainDays
       requiredBal = req
-      targetMet   = req <= (elapsedRows[elapsedRows.length - 1]?.balance ?? 0)
+      targetMet   = req <= currentBal
     } else if (target && parseFloat(target) > 0 && remainDays === 0) {
       targetMet = currentAMB >= parseFloat(target)
     }
 
-    // Projected AMB if current balance held for remaining days
-    const lastBal      = dayRows[elapsedDays - 1]?.balance ?? 0
+    // Projected AMB if current balance held for remaining days (today + future)
     const projectedAMB = totalDays > 0
-      ? (elapsedSum + lastBal * remainDays) / totalDays
+      ? (elapsedSum + currentBal * remainDays) / totalDays
       : currentAMB
 
     setResult({
       dayRows, totalDays, elapsedDays, remainDays,
       elapsedSum, currentAMB, projectedAMB,
       requiredBal, targetMet, openingBal,
-      lastBal,
+      currentBal,
     })
     setLoading(false)
   }
@@ -224,7 +227,7 @@ export default function AverageBalance() {
             <SummaryCard
               label="Projected Month-End AMB"
               value={fmt(result.projectedAMB)}
-              sub={`If ₹${result.lastBal.toLocaleString('en-IN', {maximumFractionDigits:0})} held for ${result.remainDays}d`}
+              sub={`If ₹${result.currentBal.toLocaleString('en-IN', {maximumFractionDigits:0})} held for ${result.remainDays}d`}
               color="gray"
             />
             <SummaryCard
@@ -235,9 +238,9 @@ export default function AverageBalance() {
             />
             <SummaryCard
               label="Current Balance"
-              value={fmt(result.lastBal)}
+              value={fmt(result.currentBal)}
               sub="As of today"
-              color={result.lastBal >= 0 ? 'green' : 'red'}
+              color={result.currentBal >= 0 ? 'green' : 'red'}
             />
           </div>
 
