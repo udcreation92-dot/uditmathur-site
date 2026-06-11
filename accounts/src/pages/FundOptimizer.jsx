@@ -223,6 +223,13 @@ export default function FundOptimizer() {
   // Transfers to recommend
   const transfers = analysis.filter(a => a.excess > 0 && bestAccount && a.id !== bestAccount.id)
 
+  // Accounts below their AMB lock-in that need topping up
+  const deficitAccounts = analysis.filter(a => a.excess < 0)
+  // Best source for top-ups: account with most positive excess
+  const topUpSource = analysis.length
+    ? [...analysis].sort((a, b) => b.excess - a.excess)[0]
+    : null
+
   // Investment / trading accounts
   const deployedAccounts = [
     ...byRole('investment'),
@@ -373,6 +380,28 @@ export default function FundOptimizer() {
       {analysis.length > 0 && (
         <div className="card p-5 space-y-5">
           <h2 className="font-semibold text-base">Recommended Action Plan</h2>
+
+          {/* Urgent: top up accounts below AMB */}
+          {deficitAccounts.length > 0 && topUpSource && topUpSource.excess > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-orange-600 uppercase tracking-wide">
+                ⚠ Urgent — Top up accounts below AMB requirement
+              </p>
+              {deficitAccounts.map(a => (
+                <div key={a.id} className="flex items-start sm:items-center gap-2 text-sm bg-orange-50 border border-orange-200 px-3 py-2 rounded-lg">
+                  <span className="text-orange-500 mt-0.5 sm:mt-0">↑</span>
+                  <span>
+                    Transfer <strong>{fmt(Math.abs(a.excess))}</strong> from{' '}
+                    <strong>{topUpSource.name}</strong> ({topUpSource.books?.name}) to{' '}
+                    <strong>{a.name}</strong> ({a.books?.name}) to cover AMB shortfall
+                  </span>
+                  <span className="ml-auto text-xs text-orange-700 font-medium whitespace-nowrap">
+                    {fmt(Math.abs(a.excess))} short
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Step 1: Consolidate */}
           <div className="space-y-2">
