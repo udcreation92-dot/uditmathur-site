@@ -58,6 +58,9 @@ console.log('✓ accounts/dist → dist/accounts')
 // It automatically provides env.ASSETS to the worker (no wrangler.toml binding needed).
 fs.copyFileSync(path.resolve('_worker.js'), path.resolve('dist/_worker.js'))
 console.log('✓ _worker.js → dist/_worker.js')
+// Empty .assetsignore tells wrangler pages deploy that including _worker.js is intentional.
+fs.writeFileSync(path.resolve('dist/.assetsignore'), '')
+console.log('✓ dist/.assetsignore created')
 
 // ── 6. Remove ALL _redirects files anywhere in dist/ ─────────────────────────
 // Custom worker handles all routing so _redirects rules are not needed.
