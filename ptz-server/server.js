@@ -4,13 +4,23 @@ const path = require('path');
 
 const app = express();
 const RECORDINGS_DIR = 'D:\\recordings';
+const CAMERA_TOKEN   = process.env.CAMERA_TOKEN;
 
+// CORS — allow X-Camera-Token header in preflight
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Range');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Range, X-Camera-Token');
   res.header('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
+
+// Token auth — check X-Camera-Token header or ?token= query param
+app.use('/recordings', (req, res, next) => {
+  if (!CAMERA_TOKEN) return next(); // no token configured → open (dev mode)
+  const provided = req.headers['x-camera-token'] || req.query.token;
+  if (provided !== CAMERA_TOKEN) return res.status(403).json({ error: 'Forbidden' });
   next();
 });
 

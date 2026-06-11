@@ -156,8 +156,12 @@
 
   function getServer() { return document.getElementById('server-url').value.replace(/\/$/, ''); }
 
+  function authHeaders() {
+    return window.__CAMERA_TOKEN__ ? { 'X-Camera-Token': window.__CAMERA_TOKEN__ } : {};
+  }
+
   async function api(path) {
-    const r = await fetch(getServer() + path);
+    const r = await fetch(getServer() + path, { headers: authHeaders() });
     return r.json();
   }
 
@@ -232,7 +236,8 @@
     if (idx < 0 || idx >= clips.length) return;
     currentClipIdx = idx;
     const clip = clips[idx];
-    const url = `${getServer()}/recordings/${selectedCam}/${selectedDate}/${clip.name}`;
+    const tokenParam = window.__CAMERA_TOKEN__ ? `?token=${encodeURIComponent(window.__CAMERA_TOKEN__)}` : '';
+    const url = `${getServer()}/recordings/${selectedCam}/${selectedDate}/${clip.name}${tokenParam}`;
 
     document.querySelectorAll('.clip-item').forEach(el => el.classList.remove('active'));
     const el = document.getElementById(`clip-${idx}`);
