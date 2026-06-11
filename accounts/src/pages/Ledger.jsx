@@ -46,7 +46,7 @@ export default function Ledger() {
     if (fromD)    q = q.gte('date', fromD)
     if (toD)      q = q.lte('date', toD)
 
-    const { data, error } = await q.limit(500)
+    const { data, error } = await q
     if (error) toast.error(error.message)
 
     let rows = data || []
