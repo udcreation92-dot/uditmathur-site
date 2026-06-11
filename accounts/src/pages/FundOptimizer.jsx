@@ -211,7 +211,7 @@ export default function FundOptimizer() {
     ? [...analysis].sort((a, b) => b.rate - a.rate)[0]
     : null
 
-  const totalExcess = analysis.reduce((s, a) => s + Math.max(0, a.excess), 0)
+  const totalExcess = analysis.reduce((s, a) => s + a.excess, 0)
 
   // Credit cards
   const creditCards       = byRole('credit_card')
@@ -274,9 +274,9 @@ export default function FundOptimizer() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <SummaryCard
           label="Total Excess"
-          value={fmt(totalExcess)}
+          value={`${totalExcess < 0 ? '−' : ''}${fmt(totalExcess)}`}
           sub={`${analysis.filter(a => a.excess > 0).length} of ${analysis.length} accounts`}
-          color="green"
+          color={totalExcess >= 0 ? 'green' : 'red'}
         />
         <SummaryCard
           label="CC Outstanding"
@@ -358,7 +358,9 @@ export default function FundOptimizer() {
               <tfoot className="border-t-2 border-gray-200 bg-gray-50">
                 <tr>
                   <td colSpan={5} className="table-cell text-right text-sm font-bold">Total excess</td>
-                  <td className="table-cell text-right font-bold text-green-700">{fmt(totalExcess)}</td>
+                  <td className={`table-cell text-right font-bold ${totalExcess >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                    {totalExcess < 0 ? `−${fmt(totalExcess)}` : fmt(totalExcess)}
+                  </td>
                   <td />
                 </tr>
               </tfoot>
