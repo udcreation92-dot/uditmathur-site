@@ -1,8 +1,4 @@
 name = "uditmathur-github"
 compatibility_date = "2026-06-10"
 compatibility_flags = ["nodejs_compat"]
-main = "./_worker.js"
-
-[assets]
-directory = "./dist"
-binding = "STATIC"
+pages_build_output_dir = "dist"
