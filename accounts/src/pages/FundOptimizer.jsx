@@ -57,6 +57,32 @@ function getNextOccurrence(commitment, from, to) {
   return null
 }
 
+// Compute the AMB lock-in: minimum balance to hold for the rest of the current
+// month so the running average still meets ambTarget.
+// Returns the static ambTarget as a fallback when no history is available.
+function calcAmbLockin(accountType, ambTarget, priorDr, priorCr, monthMovements) {
+  if (!ambTarget || ambTarget <= 0) return 0
+  const now      = new Date(); now.setHours(0, 0, 0, 0)
+  const year     = now.getFullYear()
+  const month    = now.getMonth()
+  const totalDays = new Date(year, month + 1, 0).getDate()
+  const todayDate = now.getDate()
+
+  // Reconstruct daily closing balances from month start to today
+  let running = normalBalance(accountType, priorDr || 0, priorCr || 0)
+  let elapsedSum = 0
+  for (let d = 1; d <= todayDate; d++) {
+    const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+    const mov = monthMovements?.[key]
+    if (mov) running += normalBalance(accountType, mov.dr, mov.cr)
+    elapsedSum += running
+  }
+
+  const remainDays = totalDays - todayDate
+  if (remainDays <= 0) return 0 // last day of month — nothing left to lock
+  return Math.max(0, (ambTarget * totalDays - elapsedSum) / remainDays)
+}
+
 // ─── main page ────────────────────────────────────────────────────────────────
 
 export default function FundOptimizer() {
@@ -64,6 +90,7 @@ export default function FundOptimizer() {
   const [settingsMap, setSettingsMap] = useState({})
   const [commitments, setCommitments] = useState([])
   const [balances,    setBalances]    = useState({})
+  const [ambData,     setAmbData]     = useState({}) // per-account month history for AMB lock-in
   const [horizon,     setHorizon]     = useState(30)
   const [loading,     setLoading]     = useState(true)
 
@@ -72,6 +99,8 @@ export default function FundOptimizer() {
   async function loadAll() {
     setLoading(true)
     const today = format(new Date(), 'yyyy-MM-dd')
+    const now   = new Date()
+    const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
 
     const [{ data: acctData }, { data: settingsData }, { data: commitData }] = await Promise.all([
       supabase.from('accounts').select('*, books(name)').order('name'),
@@ -100,18 +129,43 @@ export default function FundOptimizer() {
         .in('account_id', ids)
         .lte('journal_entries.date', today)
 
-      const balMap = {}
+      const balMap        = {}
+      const priorMonthMap = {} // lines before this month → opening balance
+      const monthLinesMap = {} // lines this month by date → for AMB daily walk
+
       for (const l of lines || []) {
-        if (!balMap[l.account_id]) balMap[l.account_id] = { dr: 0, cr: 0 }
-        balMap[l.account_id].dr += l.debit  || 0
-        balMap[l.account_id].cr += l.credit || 0
+        const aid  = l.account_id
+        const date = l.journal_entries.date
+
+        if (!balMap[aid]) balMap[aid] = { dr: 0, cr: 0 }
+        balMap[aid].dr += l.debit  || 0
+        balMap[aid].cr += l.credit || 0
+
+        if (date < monthStart) {
+          if (!priorMonthMap[aid]) priorMonthMap[aid] = { dr: 0, cr: 0 }
+          priorMonthMap[aid].dr += l.debit  || 0
+          priorMonthMap[aid].cr += l.credit || 0
+        } else {
+          if (!monthLinesMap[aid])        monthLinesMap[aid] = {}
+          if (!monthLinesMap[aid][date])  monthLinesMap[aid][date] = { dr: 0, cr: 0 }
+          monthLinesMap[aid][date].dr += l.debit  || 0
+          monthLinesMap[aid][date].cr += l.credit || 0
+        }
       }
+
       const computed = {}
+      const ambMap   = {}
       for (const a of accts) {
         const { dr = 0, cr = 0 } = balMap[a.id] || {}
         computed[a.id] = normalBalance(a.type, dr, cr)
+        ambMap[a.id]   = {
+          priorDr:    priorMonthMap[a.id]?.dr || 0,
+          priorCr:    priorMonthMap[a.id]?.cr || 0,
+          monthLines: monthLinesMap[a.id]     || {},
+        }
       }
       setBalances(computed)
+      setAmbData(ambMap)
     }
 
     setLoading(false)
@@ -139,12 +193,17 @@ export default function FundOptimizer() {
 
   // Per-account analysis
   const analysis = bankAccounts.map(a => {
-    const s        = settingsMap[a.id] || {}
-    const balance  = balances[a.id] ?? 0
-    const amb      = Number(s.min_balance || 0)
-    const upcoming = outflows[a.id] || 0
-    const excess   = balance - amb - upcoming
-    return { ...a, balance, amb, upcoming, excess, rate: Number(s.interest_rate_pa || 0) }
+    const s         = settingsMap[a.id] || {}
+    const balance   = balances[a.id] ?? 0
+    const ambTarget = Number(s.min_balance || 0)
+    const upcoming  = outflows[a.id] || 0
+    const ad        = ambData[a.id]
+    // Dynamic lock-in: balance needed for remaining days to hit AMB target
+    const ambLockin = ad
+      ? calcAmbLockin(a.type, ambTarget, ad.priorDr, ad.priorCr, ad.monthLines)
+      : ambTarget
+    const excess    = balance - ambLockin - upcoming
+    return { ...a, balance, ambTarget, ambLockin, upcoming, excess, rate: Number(s.interest_rate_pa || 0) }
   })
 
   // Best placement account (highest interest rate among savings/current)
@@ -253,7 +312,7 @@ export default function FundOptimizer() {
                   <th className="table-head">Account</th>
                   <th className="table-head">Book</th>
                   <th className="table-head text-right">Balance</th>
-                  <th className="table-head text-right">Min Balance</th>
+                  <th className="table-head text-right">AMB Lock-in</th>
                   <th className="table-head text-right">Next Outflow</th>
                   <th className="table-head text-right">Excess</th>
                   <th className="table-head text-right">Rate</th>
@@ -274,8 +333,13 @@ export default function FundOptimizer() {
                     <td className="table-cell text-right text-sm font-medium">
                       <span className={a.balance < 0 ? 'text-red-600' : ''}>{fmt(a.balance)}</span>
                     </td>
-                    <td className="table-cell text-right text-sm text-gray-500">
-                      {a.amb > 0 ? fmt(a.amb) : '—'}
+                    <td className="table-cell text-right text-sm">
+                      {a.ambTarget > 0 ? (
+                        <div>
+                          <span className="font-medium text-gray-700">{fmt(a.ambLockin)}</span>
+                          <span className="block text-xs text-gray-400">target {fmt(a.ambTarget)}</span>
+                        </div>
+                      ) : '—'}
                     </td>
                     <td className="table-cell text-right text-sm text-orange-600">
                       {a.upcoming > 0 ? fmt(a.upcoming) : '—'}
