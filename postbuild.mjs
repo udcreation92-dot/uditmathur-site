@@ -28,6 +28,11 @@ if (fs.existsSync(srcAssets)) {
 fs.copyFileSync(path.resolve('landing.html'), path.resolve('dist/index.html'))
 console.log('✓ Landing page → dist/index.html')
 
+// ── 2b. Copy cameras app → dist/cameras/index.html ───────────────────────────
+fs.mkdirSync(path.resolve('dist/cameras'), { recursive: true })
+fs.copyFileSync(path.resolve('cameras/index.html'), path.resolve('dist/cameras/index.html'))
+console.log('✓ cameras/index.html → dist/cameras/index.html')
+
 // ── 3. Build accounts app ─────────────────────────────────────────────────────
 console.log('\nInstalling accounts dependencies…')
 execSync('npm install', {
