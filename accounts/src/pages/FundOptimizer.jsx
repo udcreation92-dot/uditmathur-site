@@ -256,6 +256,7 @@ export default function FundOptimizer() {
         <div className="flex items-center gap-2">
           <label className="text-sm text-gray-600 whitespace-nowrap">Look ahead:</label>
           <select value={horizon} onChange={e => setHorizon(Number(e.target.value))} className="input w-32">
+            <option value={8}>8 days</option>
             <option value={15}>15 days</option>
             <option value={30}>30 days</option>
             <option value={60}>60 days</option>
