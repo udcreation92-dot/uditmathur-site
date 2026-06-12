@@ -224,6 +224,7 @@ export default function FundOptimizer() {
     return s + Math.min(reserved, balance)
   }, 0)
   const ccShortfall      = Math.max(0, ccOutstanding - ccReserveCovered)
+  const ccReserveExcess  = Math.max(0, ccReserveCovered - ccOutstanding)
 
   // Net investable: excess minus only the unfunded portion of CC reserve
   const netInvestable = Math.max(0, totalExcess - ccShortfall)
@@ -468,6 +469,15 @@ export default function FundOptimizer() {
                       })()}
                     </span>
                     <span className="text-green-700 font-medium">−{fmt(ccReserveCovered)}</span>
+                  </div>
+                )}
+                {ccReserveExcess > 0 && (
+                  <div className="flex items-start sm:items-center gap-2 text-sm px-3 py-2 bg-amber-50 border border-amber-300 rounded-lg">
+                    <span className="text-amber-500 shrink-0">↓</span>
+                    <span className="text-amber-800">
+                      Investments earmarked for CC reserve exceed actual outstanding by{' '}
+                      <strong>{fmt(ccReserveExcess)}</strong> — you can reduce your CC reserve investment by this amount.
+                    </span>
                   </div>
                 )}
                 <div className="flex items-center justify-between text-sm font-semibold px-3 py-2 bg-red-100 rounded-lg">
