@@ -214,11 +214,15 @@ export default function FundOptimizer() {
   const totalExcess = analysis.reduce((s, a) => s + a.excess, 0)
 
   // Credit cards
-  const creditCards       = byRole('credit_card')
-  const ccOutstanding     = creditCards.reduce((s, a) => s + Math.max(0, balances[a.id] ?? 0), 0)
+  const creditCards   = byRole('credit_card')
+  const ccOutstanding = creditCards.reduce((s, a) => s + Math.max(0, balances[a.id] ?? 0), 0)
 
-  // Net investable
-  const netInvestable = Math.max(0, totalExcess - ccOutstanding)
+  // Amount of CC reserve already invested elsewhere (marked in account settings)
+  const ccReserveCovered = accounts.reduce((s, a) => s + Number(settingsMap[a.id]?.cc_reserve_amount || 0), 0)
+  const ccShortfall      = Math.max(0, ccOutstanding - ccReserveCovered)
+
+  // Net investable: excess minus only the unfunded portion of CC reserve
+  const netInvestable = Math.max(0, totalExcess - ccShortfall)
 
   // Transfers to recommend
   const transfers = analysis.filter(a => a.excess > 0 && bestAccount && a.id !== bestAccount.id)
@@ -448,9 +452,25 @@ export default function FundOptimizer() {
                     </span>
                   </div>
                 ))}
+                {ccReserveCovered > 0 && (
+                  <div className="flex items-center justify-between text-sm px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
+                    <span className="text-green-700">
+                      ✓ Covered by investments
+                      {(() => {
+                        const sources = accounts.filter(a => Number(settingsMap[a.id]?.cc_reserve_amount) > 0)
+                        return sources.length > 0
+                          ? ` (${sources.map(a => a.name).join(', ')})`
+                          : ''
+                      })()}
+                    </span>
+                    <span className="text-green-700 font-medium">−{fmt(ccReserveCovered)}</span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between text-sm font-semibold px-3 py-2 bg-red-100 rounded-lg">
-                  <span>Total CC reserve</span>
-                  <span className="text-red-700">{fmt(ccOutstanding)}</span>
+                  <span>Net CC shortfall to fund from bank</span>
+                  <span className={ccShortfall > 0 ? 'text-red-700' : 'text-green-700'}>
+                    {ccShortfall > 0 ? fmt(ccShortfall) : '✓ Fully covered'}
+                  </span>
                 </div>
               </>
             ) : (
@@ -471,7 +491,8 @@ export default function FundOptimizer() {
               <div>
                 <p className="font-semibold text-gray-800">Investable surplus</p>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  {fmt(totalExcess)} excess − {fmt(ccOutstanding)} CC reserve
+                  {fmt(totalExcess)} excess − {fmt(ccShortfall)} unfunded CC reserve
+                  {ccReserveCovered > 0 && ` (${fmt(ccReserveCovered)} covered by investments)`}
                 </p>
               </div>
               <p className={`text-2xl font-bold ${netInvestable > 0 ? 'text-green-700' : 'text-gray-400'}`}>

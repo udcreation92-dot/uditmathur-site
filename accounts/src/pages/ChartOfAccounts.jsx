@@ -26,7 +26,7 @@ export default function ChartOfAccounts() {
   const [form,         setForm]         = useState({ name: '', code: '', type: 'asset' })
   const [linkForm,     setLinkForm]     = useState({ accA: '', accB: '' })
   const [editId,       setEditId]       = useState(null)
-  const [settingsForm, setSettingsForm] = useState({ role: 'other', rate: '', minBalance: '' })
+  const [settingsForm, setSettingsForm] = useState({ role: 'other', rate: '', minBalance: '', ccReserve: '' })
   const [loading,      setLoading]      = useState(true)
 
   async function load() {
@@ -89,20 +89,22 @@ export default function ChartOfAccounts() {
   function openSettings(a) {
     const s = settingsMap[a.id]
     setSettingsForm({
-      role:       s?.account_role  || 'other',
-      rate:       s?.interest_rate_pa != null ? String(s.interest_rate_pa) : '',
-      minBalance: s?.min_balance   != null ? String(s.min_balance) : '',
+      role:       s?.account_role      || 'other',
+      rate:       s?.interest_rate_pa  != null ? String(s.interest_rate_pa)  : '',
+      minBalance: s?.min_balance       != null ? String(s.min_balance)       : '',
+      ccReserve:  s?.cc_reserve_amount != null ? String(s.cc_reserve_amount) : '',
     })
     setEditId(editId === a.id ? null : a.id)
   }
 
   async function saveSettings(accountId) {
     const payload = {
-      account_id:       accountId,
-      account_role:     settingsForm.role,
-      interest_rate_pa: parseFloat(settingsForm.rate)       || 0,
-      min_balance:      parseFloat(settingsForm.minBalance) || 0,
-      updated_at:       new Date().toISOString(),
+      account_id:        accountId,
+      account_role:      settingsForm.role,
+      interest_rate_pa:  parseFloat(settingsForm.rate)       || 0,
+      min_balance:       parseFloat(settingsForm.minBalance) || 0,
+      cc_reserve_amount: parseFloat(settingsForm.ccReserve)  || 0,
+      updated_at:        new Date().toISOString(),
     }
     const { error } = await supabase
       .from('account_settings')
@@ -269,6 +271,18 @@ export default function ChartOfAccounts() {
                                 placeholder="e.g. 10000"
                                 value={settingsForm.minBalance}
                                 onChange={e => setSettingsForm(f => ({ ...f, minBalance: e.target.value }))}
+                              />
+                            </div>
+                            <div>
+                              <label className="label">CC reserve invested here ₹</label>
+                              <input
+                                className="input w-44"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder="e.g. 200000"
+                                value={settingsForm.ccReserve}
+                                onChange={e => setSettingsForm(f => ({ ...f, ccReserve: e.target.value }))}
                               />
                             </div>
                             <div className="flex gap-2">
