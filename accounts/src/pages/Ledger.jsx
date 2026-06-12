@@ -72,7 +72,12 @@ export default function Ledger() {
     const lines = selAcc
       ? e.journal_lines.filter(l => l.account_id === selAcc)
       : e.journal_lines
-    return lines.map(l => ({ entry: e, line: l }))
+    return lines.map(l => {
+      const contraLines = selAcc
+        ? e.journal_lines.filter(cl => cl.account_id !== selAcc)
+        : []
+      return { entry: e, line: l, contraLines }
+    })
   }).reverse()
 
   return (
@@ -122,7 +127,7 @@ export default function Ledger() {
                 <th className="table-head">Date</th>
                 <th className="table-head">Narration</th>
                 <th className="table-head">Ref</th>
-                <th className="table-head">Account</th>
+                <th className="table-head">{selAcc ? 'Contra Account' : 'Account'}</th>
                 <th className="table-head text-right">Dr</th>
                 <th className="table-head text-right">Cr</th>
                 {selAcc && <th className="table-head text-right">Balance</th>}
@@ -135,7 +140,7 @@ export default function Ledger() {
                   {selBook || selAcc ? 'No entries found' : 'Select a book or account to view entries'}
                 </td></tr>
               )}
-              {rows.map(({ entry, line }, i) => {
+              {rows.map(({ entry, line, contraLines }, i) => {
                 const dr = line.debit || 0
                 const cr = line.credit || 0
                 runningBal += dr - cr
@@ -147,7 +152,11 @@ export default function Ledger() {
                     </td>
                     <td className="table-cell text-sm">{isFirstLine ? entry.narration : ''}</td>
                     <td className="table-cell text-xs text-gray-400">{isFirstLine ? entry.reference_no : ''}</td>
-                    <td className="table-cell text-sm">{line.accounts?.name}</td>
+                    <td className="table-cell text-sm">
+                      {selAcc && contraLines.length > 0
+                        ? contraLines.map(l => l.accounts?.name).filter(Boolean).join(', ')
+                        : line.accounts?.name}
+                    </td>
                     <td className="table-cell text-right text-sm">{dr > 0 ? `₹${dr.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : ''}</td>
                     <td className="table-cell text-right text-sm">{cr > 0 ? `₹${cr.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : ''}</td>
                     {selAcc && (
