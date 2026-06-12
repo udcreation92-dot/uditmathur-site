@@ -217,8 +217,12 @@ export default function FundOptimizer() {
   const creditCards   = byRole('credit_card')
   const ccOutstanding = creditCards.reduce((s, a) => s + Math.max(0, balances[a.id] ?? 0), 0)
 
-  // Amount of CC reserve already invested elsewhere (marked in account settings)
-  const ccReserveCovered = accounts.reduce((s, a) => s + Number(settingsMap[a.id]?.cc_reserve_amount || 0), 0)
+  // Amount of CC reserve already invested elsewhere — capped at the account's actual balance
+  const ccReserveCovered = accounts.reduce((s, a) => {
+    const reserved = Number(settingsMap[a.id]?.cc_reserve_amount || 0)
+    const balance  = Math.max(0, balances[a.id] ?? 0)
+    return s + Math.min(reserved, balance)
+  }, 0)
   const ccShortfall      = Math.max(0, ccOutstanding - ccReserveCovered)
 
   // Net investable: excess minus only the unfunded portion of CC reserve
