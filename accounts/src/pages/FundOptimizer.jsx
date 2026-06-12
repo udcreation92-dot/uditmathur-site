@@ -86,13 +86,15 @@ function calcAmbLockin(accountType, ambTarget, priorDr, priorCr, monthMovements)
 // ─── main page ────────────────────────────────────────────────────────────────
 
 export default function FundOptimizer() {
-  const [accounts,    setAccounts]    = useState([])
-  const [settingsMap, setSettingsMap] = useState({})
-  const [commitments, setCommitments] = useState([])
-  const [balances,    setBalances]    = useState({})
-  const [ambData,     setAmbData]     = useState({}) // per-account month history for AMB lock-in
-  const [horizon,     setHorizon]     = useState(30)
-  const [loading,     setLoading]     = useState(true)
+  const [accounts,       setAccounts]       = useState([])
+  const [settingsMap,    setSettingsMap]    = useState({})
+  const [commitments,    setCommitments]    = useState([])
+  const [balances,       setBalances]       = useState({})
+  const [ambData,        setAmbData]        = useState({})
+  const [horizon,        setHorizon]        = useState(30)
+  const [loading,        setLoading]        = useState(true)
+  const [editingReserve, setEditingReserve] = useState(null) // account id being edited
+  const [reserveInput,   setReserveInput]   = useState('')
 
   useEffect(() => { loadAll() }, [])
 
@@ -169,6 +171,26 @@ export default function FundOptimizer() {
     }
 
     setLoading(false)
+  }
+
+  async function saveReserve(accountId) {
+    const amount = parseFloat(reserveInput) || 0
+    const existing = settingsMap[accountId]
+    const payload = {
+      account_id:        accountId,
+      account_role:      existing?.account_role      || 'other',
+      interest_rate_pa:  existing?.interest_rate_pa  || 0,
+      min_balance:       existing?.min_balance        || 0,
+      cc_reserve_amount: amount,
+      updated_at:        new Date().toISOString(),
+    }
+    const { error } = await supabase
+      .from('account_settings')
+      .upsert(payload, { onConflict: 'account_id' })
+    if (!error) {
+      setSettingsMap(m => ({ ...m, [accountId]: { ...(m[accountId] || {}), ...payload } }))
+    }
+    setEditingReserve(null)
   }
 
   // ── derived analysis ────────────────────────────────────────────────────────
@@ -562,23 +584,59 @@ export default function FundOptimizer() {
                 <th className="table-head">Book</th>
                 <th className="table-head">Role</th>
                 <th className="table-head text-right">Balance</th>
+                <th className="table-head text-right">CC Reserve ₹</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {deployedAccounts.map(a => (
-                <tr key={a.id} className="hover:bg-gray-50">
-                  <td className="table-cell font-medium text-sm">{a.name}</td>
-                  <td className="table-cell text-sm text-gray-500">{a.books?.name}</td>
-                  <td className="table-cell text-sm">
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
-                      {settingsMap[a.id]?.account_role}
-                    </span>
-                  </td>
-                  <td className="table-cell text-right text-sm font-medium">
-                    {fmt(balances[a.id] ?? 0)}
-                  </td>
-                </tr>
-              ))}
+              {deployedAccounts.map(a => {
+                const reserved = Number(settingsMap[a.id]?.cc_reserve_amount || 0)
+                const isEditing = editingReserve === a.id
+                return (
+                  <tr key={a.id} className="hover:bg-gray-50">
+                    <td className="table-cell font-medium text-sm">{a.name}</td>
+                    <td className="table-cell text-sm text-gray-500">{a.books?.name}</td>
+                    <td className="table-cell text-sm">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                        {settingsMap[a.id]?.account_role}
+                      </span>
+                    </td>
+                    <td className="table-cell text-right text-sm font-medium">
+                      {fmt(balances[a.id] ?? 0)}
+                    </td>
+                    <td className="table-cell text-right text-sm">
+                      {isEditing ? (
+                        <div className="flex items-center justify-end gap-1">
+                          <input
+                            autoFocus
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="input w-32 text-right text-sm py-1 px-2"
+                            value={reserveInput}
+                            onChange={e => setReserveInput(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') saveReserve(a.id)
+                              if (e.key === 'Escape') setEditingReserve(null)
+                            }}
+                          />
+                          <button onClick={() => saveReserve(a.id)} className="text-green-600 hover:text-green-800 text-xs font-semibold">✓</button>
+                          <button onClick={() => setEditingReserve(null)} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
+                        </div>
+                      ) : (
+                        <button
+                          className="group flex items-center justify-end gap-1 w-full text-right"
+                          onClick={() => { setEditingReserve(a.id); setReserveInput(reserved > 0 ? String(reserved) : '') }}
+                        >
+                          <span className={reserved > 0 ? 'text-indigo-700 font-medium' : 'text-gray-300'}>
+                            {reserved > 0 ? fmt(reserved) : '—'}
+                          </span>
+                          <span className="text-gray-300 group-hover:text-gray-500 text-xs">✎</span>
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
