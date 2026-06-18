@@ -96,6 +96,16 @@
 
     .empty { padding: 24px; text-align: center; color: var(--muted); font-size: 0.82rem; }
 
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+    .status-ok   { background: var(--live); }
+    .status-err  { background: var(--error); }
+    .status-warn { background: #f59e0b; }
+    #server-status { font-size: 0.75rem; display: flex; align-items: center; gap: 4px; color: var(--muted); }
+
+    .err-box { background: #1a0000; border: 1px solid #3d0000; border-radius: 8px;
+               padding: 12px 14px; margin: 8px; font-size: 0.8rem; color: #ef4444; }
+    .err-box strong { display: block; margin-bottom: 4px; }
+
     @media (max-width: 700px) {
       .layout { flex-direction: column; }
       .sidebar { width: 100%; max-height: 220px; border-right: none; border-bottom: 1px solid var(--border); }
@@ -110,7 +120,10 @@
     <span style="font-size:0.75rem;color:var(--muted)">
       Server: <input id="server-url" value="https://recordings.uditmathur.uk" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:3px 8px;border-radius:4px;font-size:0.75rem;width:240px" />
     </span>
-    <div id="clock">--:--:--</div>
+    <div style="display:flex;align-items:center;gap:16px">
+      <div id="server-status"><span class="status-dot status-warn"></span>Checking…</div>
+      <div id="clock">--:--:--</div>
+    </div>
   </div>
 </header>
 
@@ -155,36 +168,87 @@
   let selectedCam = null, selectedDate = null, clips = [], currentClipIdx = -1;
 
   function getServer() { return document.getElementById('server-url').value.replace(/\/$/, ''); }
+  function authHeaders() { return window.__CAMERA_TOKEN__ ? { 'X-Camera-Token': window.__CAMERA_TOKEN__ } : {}; }
 
-  function authHeaders() {
-    return window.__CAMERA_TOKEN__ ? { 'X-Camera-Token': window.__CAMERA_TOKEN__ } : {};
+  function showStatus(state, msg) {
+    const el = document.getElementById('server-status');
+    const cls = state === 'ok' ? 'status-ok' : state === 'err' ? 'status-err' : 'status-warn';
+    el.innerHTML = `<span class="status-dot ${cls}"></span>${msg}`;
+  }
+
+  function errBox(msg, detail) {
+    return `<div class="err-box"><strong>${msg}</strong>${detail ? `<span style="color:#f87171">${detail}</span>` : ''}</div>`;
   }
 
   async function api(path) {
-    const r = await fetch(getServer() + path, { headers: authHeaders() });
-    return r.json();
+    let r;
+    try {
+      r = await fetch(getServer() + path, { headers: authHeaders() });
+    } catch (e) {
+      throw new Error(`Network error — is the recordings server running? (${e.message})`);
+    }
+    if (r.status === 401 || r.status === 403) {
+      throw new Error(`Auth failed (${r.status}) — token mismatch between Cloudflare env and ptz-server. Restart ptz-server with matching CAMERA_TOKEN.`);
+    }
+    if (!r.ok) {
+      throw new Error(`Server returned ${r.status} ${r.statusText}`);
+    }
+    try { return await r.json(); }
+    catch (e) { throw new Error(`Bad response from server (not JSON)`); }
   }
 
   function fmtSize(bytes) {
     if (bytes > 1024*1024*1024) return (bytes/1024/1024/1024).toFixed(1) + ' GB';
-    if (bytes > 1024*1024) return (bytes/1024/1024).toFixed(1) + ' MB';
+    if (bytes > 1024*1024)      return (bytes/1024/1024).toFixed(1)       + ' MB';
     return (bytes/1024).toFixed(0) + ' KB';
+  }
+
+  // ── Server health check ───────────────────────────────────────────────────
+  async function checkHealth() {
+    try {
+      const r = await fetch(getServer() + '/health', { headers: authHeaders() });
+      if (r.status === 403) {
+        showStatus('err', 'Token mismatch — check CAMERA_TOKEN');
+        document.getElementById('cam-list').innerHTML = errBox(
+          'Authentication failed',
+          'The token in Cloudflare does not match the token the ptz-server was started with. Restart ptz-server with the correct CAMERA_TOKEN.'
+        );
+        return false;
+      }
+      if (!r.ok) { showStatus('err', `Server error ${r.status}`); return false; }
+      const data = await r.json();
+      if (data.ok) { showStatus('ok', 'Server online'); return true; }
+    } catch (e) {
+      showStatus('err', 'Server unreachable');
+      document.getElementById('cam-list').innerHTML = errBox(
+        'Cannot reach recordings server',
+        `Make sure ptz-server is running on your Windows machine and ${getServer()} is accessible. Error: ${e.message}`
+      );
+    }
+    return false;
   }
 
   // ── Load cameras ──────────────────────────────────────────────────────────
   async function loadCameras() {
-    const cams = await api('/recordings');
+    const ok = await checkHealth();
+    if (!ok) return;
     const el = document.getElementById('cam-list');
-    if (!cams.length) { el.innerHTML = '<div class="empty">No recordings found</div>'; return; }
-    el.innerHTML = '';
-    cams.forEach((cam, i) => {
-      const btn = document.createElement('button');
-      btn.className = 'cam-btn';
-      btn.innerHTML = `<span class="cam-dot"></span>${cam.replace('_', ' ').toUpperCase()}`;
-      btn.onclick = () => selectCamera(cam, btn);
-      el.appendChild(btn);
-      if (i === 0) btn.click();
-    });
+    el.innerHTML = '<div class="empty">Loading…</div>';
+    try {
+      const cams = await api('/recordings');
+      if (!cams.length) { el.innerHTML = '<div class="empty">No recordings found</div>'; return; }
+      el.innerHTML = '';
+      cams.forEach((cam, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'cam-btn';
+        btn.innerHTML = `<span class="cam-dot"></span>${cam.replace(/_/g, ' ').toUpperCase()}`;
+        btn.onclick = () => selectCamera(cam, btn);
+        el.appendChild(btn);
+        if (i === 0) btn.click();
+      });
+    } catch (e) {
+      el.innerHTML = errBox('Failed to load cameras', e.message);
+    }
   }
 
   // ── Select camera ─────────────────────────────────────────────────────────
@@ -194,19 +258,22 @@
     btn.classList.add('active');
     document.getElementById('date-list').innerHTML = '<div class="empty">Loading…</div>';
     document.getElementById('clip-list').innerHTML = '<div class="empty">Select a date</div>';
-
-    const dates = await api(`/recordings/${cam}`);
-    const el = document.getElementById('date-list');
-    if (!dates.length) { el.innerHTML = '<div class="empty">No recordings</div>'; return; }
-    el.innerHTML = '';
-    dates.forEach((date, i) => {
-      const btn = document.createElement('button');
-      btn.className = 'date-btn';
-      btn.textContent = date;
-      btn.onclick = () => selectDate(date, btn);
-      el.appendChild(btn);
-      if (i === 0) btn.click();
-    });
+    try {
+      const dates = await api(`/recordings/${cam}`);
+      const el = document.getElementById('date-list');
+      if (!dates.length) { el.innerHTML = '<div class="empty">No recordings</div>'; return; }
+      el.innerHTML = '';
+      dates.forEach((date, i) => {
+        const b = document.createElement('button');
+        b.className = 'date-btn';
+        b.textContent = date;
+        b.onclick = () => selectDate(date, b);
+        el.appendChild(b);
+        if (i === 0) b.click();
+      });
+    } catch (e) {
+      document.getElementById('date-list').innerHTML = errBox('Failed to load dates', e.message);
+    }
   }
 
   // ── Select date ───────────────────────────────────────────────────────────
@@ -215,20 +282,23 @@
     document.querySelectorAll('.date-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('clip-list').innerHTML = '<div class="empty">Loading…</div>';
-
-    clips = await api(`/recordings/${selectedCam}/${date}`);
-    const el = document.getElementById('clip-list');
-    if (!clips.length) { el.innerHTML = '<div class="empty">No clips</div>'; return; }
-    el.innerHTML = '';
-    clips.forEach((clip, i) => {
-      const item = document.createElement('div');
-      item.className = 'clip-item';
-      item.id = `clip-${i}`;
-      item.innerHTML = `<span>&#9654;</span><span class="clip-time">${clip.time}</span><span class="clip-size">${fmtSize(clip.size)}</span>`;
-      item.onclick = () => playClip(i);
-      el.appendChild(item);
-    });
-    playClip(0);
+    try {
+      clips = await api(`/recordings/${selectedCam}/${date}`);
+      const el = document.getElementById('clip-list');
+      if (!clips.length) { el.innerHTML = '<div class="empty">No clips</div>'; return; }
+      el.innerHTML = '';
+      clips.forEach((clip, i) => {
+        const item = document.createElement('div');
+        item.className = 'clip-item';
+        item.id = `clip-${i}`;
+        item.innerHTML = `<span>&#9654;</span><span class="clip-time">${clip.time}</span><span class="clip-size">${fmtSize(clip.size)}</span>`;
+        item.onclick = () => playClip(i);
+        el.appendChild(item);
+      });
+      playClip(0);
+    } catch (e) {
+      document.getElementById('clip-list').innerHTML = errBox('Failed to load clips', e.message);
+    }
   }
 
   // ── Play clip ─────────────────────────────────────────────────────────────
@@ -244,24 +314,37 @@
     if (el) { el.classList.add('active'); el.scrollIntoView({ block: 'nearest' }); }
 
     const video = document.getElementById('player');
-    const placeholder = document.getElementById('placeholder');
     video.style.display = 'block';
-    placeholder.style.display = 'none';
+    document.getElementById('placeholder').style.display = 'none';
+
+    video.onerror = () => {
+      document.getElementById('placeholder').innerHTML =
+        `<div style="color:var(--error);text-align:center;padding:1rem">
+           <div style="font-size:2rem;margin-bottom:8px">⚠</div>
+           <strong>Video failed to load</strong><br>
+           <span style="font-size:0.75rem;color:var(--muted)">Check that ptz-server is running and the token matches.</span>
+         </div>`;
+      document.getElementById('placeholder').style.display = 'flex';
+      video.style.display = 'none';
+    };
+
     video.src = url;
     video.play().catch(() => {});
 
-    document.getElementById('info-cam').textContent = selectedCam.replace('_', ' ').toUpperCase();
+    document.getElementById('info-cam').textContent  = selectedCam.replace(/_/g, ' ').toUpperCase();
     document.getElementById('info-date').textContent = selectedDate;
     document.getElementById('info-time').textContent = clip.time;
     document.getElementById('info-size').textContent = fmtSize(clip.size);
     document.getElementById('btn-prev').disabled = idx === 0;
     document.getElementById('btn-next').disabled = idx === clips.length - 1;
 
-    // Auto-play next clip
     video.onended = () => { if (idx + 1 < clips.length) playClip(idx + 1); };
   }
 
   function navigate(dir) { playClip(currentClipIdx + dir); }
+
+  // Re-check when server URL changes
+  document.getElementById('server-url').addEventListener('change', () => loadCameras());
 
   // Clock
   setInterval(() => {
