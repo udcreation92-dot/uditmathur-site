@@ -165,6 +165,34 @@ function EntryBlock({
     e.target.value = ''
   }
 
+  async function pasteFromClipboard() {
+    try {
+      const items = await navigator.clipboard.read()
+      const images = []
+      for (const item of items) {
+        const imgType = item.types.find(t => t.startsWith('image/'))
+        if (imgType) {
+          const blob = await item.getType(imgType)
+          const ext  = imgType.split('/')[1] || 'png'
+          const file = new File([blob], `clipboard-${Date.now()}.${ext}`, { type: imgType })
+          images.push(file)
+        }
+      }
+      if (images.length === 0) {
+        toast.error('No image found in clipboard')
+      } else {
+        onUpdate({ ...entry, pendingFiles: [...entry.pendingFiles, ...images] })
+        toast.success(`${images.length} image(s) pasted from clipboard`)
+      }
+    } catch (e) {
+      if (e.name === 'NotAllowedError') {
+        toast.error('Clipboard access denied — allow clipboard permission in browser')
+      } else {
+        toast.error('Could not read clipboard')
+      }
+    }
+  }
+
   function removePending(i) {
     onUpdate({ ...entry, pendingFiles: entry.pendingFiles.filter((_, j) => j !== i) })
   }
@@ -371,6 +399,12 @@ function EntryBlock({
           <button type="button" onClick={() => scanRef.current.click()}
             className="btn-secondary text-xs py-1.5 px-3 hidden sm:inline-flex">
             📷 Use camera
+          </button>
+
+          {/* Paste from clipboard */}
+          <button type="button" onClick={pasteFromClipboard}
+            className="btn-secondary text-xs py-1.5 px-3">
+            📋 Paste
           </button>
 
           {!driveReady && entry.pendingFiles.length > 0 && (
