@@ -26,6 +26,8 @@ export default function ChartOfAccounts() {
   const [form,         setForm]         = useState({ name: '', code: '', type: 'asset' })
   const [linkForm,     setLinkForm]     = useState({ accA: '', accB: '' })
   const [editId,       setEditId]       = useState(null)
+  const [editAccId,    setEditAccId]    = useState(null)
+  const [editAccForm,  setEditAccForm]  = useState({ name: '', code: '', type: 'asset' })
   const [settingsForm, setSettingsForm] = useState({ role: 'other', rate: '', minBalance: '', ccReserve: '' })
   const [loading,      setLoading]      = useState(true)
 
@@ -70,6 +72,23 @@ export default function ChartOfAccounts() {
     else { toast.success('Account deleted'); load() }
   }
 
+  function openEditAcc(a) {
+    setEditAccId(editAccId === a.id ? null : a.id)
+    setEditAccForm({ name: a.name, code: a.code || '', type: a.type })
+    setEditId(null)
+  }
+
+  async function saveEditAcc(id) {
+    if (!editAccForm.name.trim()) return toast.error('Name is required')
+    const { error } = await supabase.from('accounts').update({
+      name: editAccForm.name.trim(),
+      code: editAccForm.code.trim() || null,
+      type: editAccForm.type,
+    }).eq('id', id)
+    if (error) toast.error(error.message)
+    else { toast.success('Account updated'); setEditAccId(null); load() }
+  }
+
   async function addLink(e) {
     e.preventDefault()
     if (linkForm.accA === linkForm.accB) return toast.error('Cannot link an account to itself')
@@ -95,6 +114,7 @@ export default function ChartOfAccounts() {
       ccReserve:  s?.cc_reserve_amount != null ? String(s.cc_reserve_amount) : '',
     })
     setEditId(editId === a.id ? null : a.id)
+    setEditAccId(null)
   }
 
   async function saveSettings(accountId) {
@@ -178,9 +198,10 @@ export default function ChartOfAccounts() {
             {filtered.map(a => {
               const s    = settingsMap[a.id]
               const role = s?.account_role || 'other'
+              const isEditingAcc = editAccId === a.id
               return (
                 <React.Fragment key={a.id}>
-                  <tr className={`hover:bg-gray-50 ${editId === a.id ? 'bg-brand-50' : ''}`}>
+                  <tr className={`hover:bg-gray-50 ${editId === a.id ? 'bg-brand-50' : ''} ${isEditingAcc ? 'bg-amber-50' : ''}`}>
                     <td className="table-cell text-xs text-gray-400">{a.code}</td>
                     <td className="table-cell font-medium">{a.name}</td>
                     <td className="table-cell">
@@ -210,6 +231,15 @@ export default function ChartOfAccounts() {
                     <td className="table-cell">
                       <div className="flex items-center gap-2 justify-end">
                         <button
+                          onClick={() => openEditAcc(a)}
+                          className={`text-xs transition-colors ${
+                            isEditingAcc ? 'text-amber-600 font-semibold' : 'text-gray-400 hover:text-amber-600'
+                          }`}
+                          title="Edit account"
+                        >
+                          ✎
+                        </button>
+                        <button
                           onClick={() => openSettings(a)}
                           className={`text-xs transition-colors ${
                             editId === a.id
@@ -229,6 +259,53 @@ export default function ChartOfAccounts() {
                       </div>
                     </td>
                   </tr>
+                  {isEditingAcc && (
+                    <tr className="bg-amber-50">
+                      <td colSpan={6} className="px-5 py-4">
+                        <div className="space-y-3">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                            Edit account — {a.name}
+                          </p>
+                          <div className="flex flex-wrap gap-3 items-end">
+                            <div>
+                              <label className="label">Account name *</label>
+                              <input
+                                className="input w-52"
+                                value={editAccForm.name}
+                                onChange={e => setEditAccForm(f => ({ ...f, name: e.target.value }))}
+                                autoFocus
+                              />
+                            </div>
+                            <div>
+                              <label className="label">Code</label>
+                              <input
+                                className="input w-28"
+                                value={editAccForm.code}
+                                onChange={e => setEditAccForm(f => ({ ...f, code: e.target.value }))}
+                                placeholder="e.g. 1001"
+                              />
+                            </div>
+                            <div>
+                              <label className="label">Type / Category *</label>
+                              <select
+                                className="input w-36"
+                                value={editAccForm.type}
+                                onChange={e => setEditAccForm(f => ({ ...f, type: e.target.value }))}
+                              >
+                                {TYPES.map(t => (
+                                  <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="flex gap-2">
+                              <button onClick={() => saveEditAcc(a.id)} className="btn-primary text-sm">Save</button>
+                              <button onClick={() => setEditAccId(null)} className="btn-secondary text-sm">Cancel</button>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
                   {editId === a.id && (
                     <tr className="bg-brand-50">
                       <td colSpan={6} className="px-5 py-4">
