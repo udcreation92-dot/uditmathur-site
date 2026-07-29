@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react'
-import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useEntryModal } from '../context/EntryModal'
 import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
 import toast from 'react-hot-toast'
@@ -100,6 +100,7 @@ export default function StatementReconcile() {
 
   const bookAccounts = accounts.filter(a => a.book_id === selBook)
   const bookName = books.find(b => b.id === selBook)?.name || ''
+  const { open: openEntry } = useEntryModal()
 
   function handleFile(e) {
     const file = e.target.files?.[0]; if (!file) return
@@ -436,7 +437,7 @@ export default function StatementReconcile() {
                         <td className="table-cell text-right font-medium">{fmt(t.amount)}</td>
                         <td className="table-cell text-xs">{t.direction === 'credit' ? 'Money IN (Dr account)' : 'Money OUT (Cr account)'}</td>
                         <td className="table-cell text-xs">{t.description || t.narration}</td>
-                        <td className="table-cell"><Link to={`/entry/${t.entryId}/edit`} className="text-brand-600 hover:text-brand-700 text-xs">Edit</Link></td>
+                        <td className="table-cell"><button onClick={() => openEntry({ entryId: t.entryId, onSaved: runReconcile })} className="text-brand-600 hover:text-brand-700 text-xs">Edit</button></td>
                       </tr>
                     ))}
                   </tbody>
@@ -612,7 +613,7 @@ export default function StatementReconcile() {
                         <td className="table-cell text-right font-medium">{fmt(l.amount)}</td>
                         <td className="table-cell text-xs">{l.narration}</td>
                         <td className="table-cell">
-                          <Link to={`/entry/${l.entryId}/edit`} className="text-brand-600 hover:text-brand-700 text-xs">Edit</Link>
+                          <button onClick={() => openEntry({ entryId: l.entryId, onSaved: runReconcile })} className="text-brand-600 hover:text-brand-700 text-xs">Edit</button>
                         </td>
                       </tr>
                     ))}

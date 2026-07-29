@@ -420,8 +420,9 @@ function EntryBlock({
 
 // ─── main page ───────────────────────────────────────────────────────────────
 
-export default function NewEntry() {
-  const { id: editId } = useParams()
+export default function NewEntry({ entryId = null, onDone = null, embedded = false }) {
+  const { id: routeId } = useParams()
+  const editId = entryId ?? routeId
   const navigate = useNavigate()
 
   const [books,      setBooks]      = useState([])
@@ -568,7 +569,7 @@ export default function NewEntry() {
       }
 
       toast.success(saved === 1 ? 'Entry saved' : `${saved} entries saved`)
-      navigate('/ledger')
+      if (onDone) onDone(true); else navigate('/ledger')
     } catch (err) {
       toast.error(err.message)
     } finally {
@@ -583,12 +584,14 @@ export default function NewEntry() {
   }
 
   return (
-    <div className="max-w-5xl space-y-4 pb-24">
-      {/* Page header */}
+    <div className={embedded ? 'space-y-4 pb-24' : 'max-w-5xl space-y-4 pb-24'}>
+      {/* Page header (hidden when embedded in the modal, which has its own header) */}
+      {!embedded && (
       <div className="flex items-center justify-between">
         <h1 className="text-xl sm:text-2xl font-bold">{editId ? 'Edit Entry' : 'New Journal Entry'}</h1>
         <button type="button" onClick={() => navigate(-1)} className="btn-secondary text-sm">Cancel</button>
       </div>
+      )}
 
       {/* Entry blocks */}
       {entries.map((entry, idx) => (

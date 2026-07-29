@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { supabase } from './lib/supabase'
 import Layout from './components/Layout'
+import { EntryModalProvider } from './context/EntryModal'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Books from './pages/Books'
@@ -47,7 +48,9 @@ export default function App() {
         <Route path="/login" element={session ? <Navigate to="/" replace /> : <Login />} />
         <Route path="/" element={
           <ProtectedRoute session={session}>
-            <Layout session={session} />
+            <EntryModalProvider>
+              <Layout session={session} />
+            </EntryModalProvider>
           </ProtectedRoute>
         }>
           <Route index element={<Dashboard />} />
