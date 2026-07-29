@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useEntryRefresh } from '../context/EntryModal'
 
 export default function TrialBalance() {
+  const navigate = useNavigate()
   const [books,   setBooks]   = useState([])
   const [selBook, setSelBook] = useState('')
   const [rows,    setRows]    = useState([])
@@ -16,6 +19,9 @@ export default function TrialBalance() {
   }, [])
 
   useEffect(() => { if (selBook) generate() }, [selBook, asOf])
+
+  // Recompute whenever an entry is saved via the modal.
+  useEntryRefresh(generate)
 
   async function generate() {
     setLoading(true)
@@ -83,9 +89,11 @@ export default function TrialBalance() {
                 <tr><td colSpan={5} className="table-cell text-center text-gray-400 py-8">No data</td></tr>
               )}
               {rows.map(r => (
-                <tr key={r.id} className="hover:bg-gray-50">
+                <tr key={r.id} className="hover:bg-gray-50 cursor-pointer"
+                  title="Open in Ledger"
+                  onClick={() => navigate(`/ledger?book=${selBook}&account=${r.id}`)}>
                   <td className="table-cell text-xs text-gray-400">{r.code}</td>
-                  <td className="table-cell font-medium">{r.name}</td>
+                  <td className="table-cell font-medium text-brand-700">{r.name}</td>
                   <td className="table-cell">
                     <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{r.type}</span>
                   </td>

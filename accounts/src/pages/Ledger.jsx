@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
+import { useEntryModal, useEntryRefresh } from '../context/EntryModal'
 
 export default function Ledger() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const { open: openEntry } = useEntryModal()
   const [books,    setBooks]    = useState([])
   const [accounts, setAccounts] = useState([])
   const [entries,  setEntries]  = useState([])
@@ -32,6 +34,9 @@ export default function Ledger() {
     if (!selBook && !selAcc) { setEntries([]); return }
     loadEntries()
   }, [selBook, selAcc, fromD, toD])
+
+  // Refresh the list whenever an entry is saved via the modal.
+  useEntryRefresh(loadEntries)
 
   async function loadEntries() {
     setLoading(true)
@@ -84,7 +89,7 @@ export default function Ledger() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Ledger</h1>
-        <Link to="/entry/new" className="btn-primary">+ New Entry</Link>
+        <button onClick={() => openEntry({})} className="btn-primary">+ New Entry</button>
       </div>
 
       {/* Filters */}
@@ -167,7 +172,7 @@ export default function Ledger() {
                     {isFirstLine ? (
                       <td className="table-cell">
                         <div className="flex gap-2">
-                          <Link to={`/entry/${entry.id}/edit`} className="text-brand-500 hover:text-brand-700 text-xs">Edit</Link>
+                          <button onClick={() => openEntry({ entryId: entry.id })} className="text-brand-500 hover:text-brand-700 text-xs">Edit</button>
                           <button onClick={() => deleteEntry(entry.id)} className="text-red-400 hover:text-red-600 text-xs">Del</button>
                         </div>
                       </td>

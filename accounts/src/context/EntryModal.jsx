@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react'
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react'
 import NewEntry from '../pages/NewEntry'
 
 // App-wide "floating" entry form. Any page can open it to create or edit a
@@ -8,19 +8,34 @@ import NewEntry from '../pages/NewEntry'
 const Ctx = createContext(null)
 export const useEntryModal = () => useContext(Ctx)
 
+// Pages call this to auto-refresh their data whenever ANY entry is saved via
+// the modal or the floating + button.
+export function useEntryRefresh(fn) {
+  const { setPageRefresh } = useEntryModal()
+  useEffect(() => {
+    setPageRefresh(() => fn)
+    return () => setPageRefresh(null)
+  }, [fn, setPageRefresh])
+}
+
 export function EntryModalProvider({ children }) {
   const [state, setState] = useState(null) // { entryId, onSaved } | null
+  const refreshRef = useRef(null)
 
   const open  = useCallback((opts = {}) => setState({ entryId: opts.entryId ?? null, onSaved: opts.onSaved }), [])
   const close = useCallback(() => setState(null), [])
+  const setPageRefresh = useCallback(fn => { refreshRef.current = fn }, [])
 
   function handleDone(saved) {
-    if (saved && state?.onSaved) state.onSaved()
+    if (saved) {
+      if (state?.onSaved) state.onSaved()
+      if (refreshRef.current) refreshRef.current()   // refresh the current page in place
+    }
     setState(null)
   }
 
   return (
-    <Ctx.Provider value={{ open, close }}>
+    <Ctx.Provider value={{ open, close, setPageRefresh }}>
       {children}
 
       {/* Floating "New Entry" action button — available on every page */}
