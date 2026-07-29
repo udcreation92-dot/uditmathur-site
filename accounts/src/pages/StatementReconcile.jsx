@@ -15,6 +15,7 @@ const FIELD_ALIASES = {
   debit:       ['debit', 'withdrawal', 'withdrawals', 'dr', 'paid out', 'debit amount'],
   credit:      ['credit', 'deposit', 'deposits', 'cr', 'paid in', 'credit amount'],
   description: ['description', 'narration', 'particulars', 'details', 'remarks', 'remark', 'note', 'transaction'],
+  balance:     ['balance', 'bal', 'closing balance', 'running balance', 'available balance'],
 }
 
 function detectColumn(headers, field) {
@@ -127,8 +128,10 @@ export default function StatementReconcile() {
   }
 
   // Turn raw rows into statement transactions {date, amount, direction, description}.
+  // Also captures the last non-empty running balance as the statement's closing balance.
   function parseStatement() {
     const txns = []
+    let closeBal = null
     for (const row of rawRows) {
       const date = parseDate(row[colMap.date])
       const desc = String(row[colMap.description] || '').trim()
@@ -140,18 +143,23 @@ export default function StatementReconcile() {
         amount = parseAmount(row[colMap.amount])
       }
       if (date && amount > 0) txns.push({ date, amount, direction, description: desc })
+      if (colMap.balance) {
+        const b = row[colMap.balance]
+        if (b !== '' && b !== null && b !== undefined) closeBal = parseFloat(String(b).replace(/[₹,\s]/g, ''))
+      }
     }
-    return txns
+    return { txns, closeBal }
   }
 
   async function runReconcile() {
     if (!selAcc) return toast.error('Pick the account this statement belongs to')
-    const txns = parseStatement()
+    const { txns, closeBal } = parseStatement()
     if (!txns.length) return toast.error('No transactions parsed — check your column mapping')
     setBusy(true)
     try {
       const dates = txns.map(t => t.date).sort()
       const from = shift(dates[0], -tolerance), to = shift(dates[dates.length - 1], tolerance)
+      const lastDate = dates[dates.length - 1]
 
       const { data: rows, error } = await supabase
         .from('journal_lines')
@@ -164,12 +172,14 @@ export default function StatementReconcile() {
       const ledger = (rows || []).map(r => ({
         entryId: r.journal_entries.id,
         date: r.journal_entries.date,
+        signed: (r.debit || 0) - (r.credit || 0),   // + = debit (increase asset), - = credit
         amount: Math.abs((r.debit || 0) - (r.credit || 0)),
         narration: r.journal_entries.narration || '',
         used: false,
       }))
 
       const missing = []
+      const reversed = []   // matched by amount+date but booked the wrong way
       let matched = 0
       for (const t of txns) {
         let best = -1, bestDist = Infinity
@@ -179,12 +189,28 @@ export default function StatementReconcile() {
           const d = daysApart(ledger[i].date, t.date)
           if (d <= tolerance && d < bestDist) { best = i; bestDist = d }
         }
-        if (best >= 0) { ledger[best].used = true; matched++ }
-        else missing.push(t)
+        if (best >= 0) {
+          ledger[best].used = true
+          // A statement "credit" (money IN) should be a DEBIT to this asset account.
+          const expectDebit = t.direction === 'credit'
+          const isDebit = ledger[best].signed > 0
+          if (expectDebit === isDebit) matched++
+          else reversed.push({ ...t, entryId: ledger[best].entryId, narration: ledger[best].narration })
+        } else {
+          missing.push(t)
+        }
       }
       const extra = ledger.filter(l => !l.used)
 
-      setResult({ matched, missing, extra, total: txns.length })
+      // Ledger balance for this account as of the statement's last date (for the balance check).
+      const { data: allRows } = await supabase
+        .from('journal_lines')
+        .select('debit, credit, journal_entries!inner(date)')
+        .eq('account_id', selAcc)
+        .lte('journal_entries.date', lastDate)
+      const ledgerBal = (allRows || []).reduce((s, r) => s + (r.debit || 0) - (r.credit || 0), 0)
+
+      setResult({ matched, missing, extra, reversed, total: txns.length, closeBal, ledgerBal, lastDate })
       setPicked(Object.fromEntries(missing.map((_, i) => [i, true])))
       setExtraPicked({})
       setFAmount(''); setFDesc(''); setFDir('all')
@@ -361,13 +387,65 @@ export default function StatementReconcile() {
       {/* Results */}
       {result && (
         <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-3">
-            <Stat label="Matched"  value={result.matched}         color="green" />
-            <Stat label="Missing"  value={result.missing.length}  color="amber" />
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Stat label="Matched"  value={result.matched}          color="green" />
+            <Stat label="Reversed (wrong dir)" value={result.reversed.length} color="red" />
+            <Stat label="Missing"  value={result.missing.length}   color="amber" />
             <Stat label="Extra in ledger" value={result.extra.length} color="gray" />
           </div>
 
-          {result.missing.length === 0 && result.extra.length === 0 && (
+          {/* Balance check */}
+          {result.closeBal != null && (
+            (() => {
+              const diff = result.ledgerBal - result.closeBal
+              const ok = Math.abs(diff) < 0.01
+              return (
+                <div className={`rounded-xl border p-4 ${ok ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                    <span>Your ledger balance (as of {result.lastDate}): <strong>{fmt(result.ledgerBal)}</strong></span>
+                    <span>Statement closing balance: <strong>{fmt(result.closeBal)}</strong></span>
+                    <span className={ok ? 'text-green-700 font-semibold' : 'text-red-700 font-semibold'}>
+                      {ok ? '✅ Balances match' : `⚠️ Off by ${fmt(Math.abs(diff))}`}
+                    </span>
+                  </div>
+                  {!ok && result.reversed.length > 0 && (
+                    <p className="text-xs text-red-600 mt-2">Reversed entries below account for {fmt(result.reversed.reduce((s, r) => s + 2 * r.amount, 0))} of this gap (each is off by 2× its amount). Fix them and re-reconcile.</p>
+                  )}
+                </div>
+              )
+            })()
+          )}
+          {result.closeBal == null && (
+            <p className="text-xs text-gray-400">Map the statement's <strong>Balance</strong> column above to see a ledger-vs-statement balance check.</p>
+          )}
+
+          {/* Reversed entries */}
+          {result.reversed.length > 0 && (
+            <div className="card p-5 space-y-3">
+              <h2 className="font-semibold text-red-700">Booked the wrong way ({result.reversed.length})</h2>
+              <p className="text-xs text-gray-500">These match a statement line by amount &amp; date, but the Debit/Credit is reversed in your ledger (money-in booked as out, or vice-versa). Edit each to flip it.</p>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px] text-sm">
+                  <thead>
+                    <tr><th className="table-head">Date</th><th className="table-head text-right">Amount</th><th className="table-head">Should be</th><th className="table-head">Description</th><th className="table-head w-12"></th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {result.reversed.slice(0, 300).map((t, i) => (
+                      <tr key={i} className="hover:bg-gray-50">
+                        <td className="table-cell whitespace-nowrap text-xs">{t.date}</td>
+                        <td className="table-cell text-right font-medium">{fmt(t.amount)}</td>
+                        <td className="table-cell text-xs">{t.direction === 'credit' ? 'Money IN (Dr account)' : 'Money OUT (Cr account)'}</td>
+                        <td className="table-cell text-xs">{t.description || t.narration}</td>
+                        <td className="table-cell"><Link to={`/entry/${t.entryId}/edit`} className="text-brand-600 hover:text-brand-700 text-xs">Edit</Link></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {result.missing.length === 0 && result.extra.length === 0 && result.reversed.length === 0 && (
             <div className="bg-green-50 border border-green-200 rounded-xl p-5 text-center text-green-700 font-semibold">
               ✅ All {result.total} statement lines reconcile with your ledger.
             </div>
@@ -556,6 +634,7 @@ function Stat({ label, value, color }) {
   const colors = {
     green: 'bg-green-50 border-green-200 text-green-700',
     amber: 'bg-amber-50 border-amber-200 text-amber-700',
+    red:   'bg-red-50 border-red-200 text-red-700',
     gray:  'bg-gray-50 border-gray-200 text-gray-600',
   }
   return (
