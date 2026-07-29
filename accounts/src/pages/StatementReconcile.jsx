@@ -15,6 +15,7 @@ const FIELD_ALIASES = {
   debit:       ['debit', 'withdrawal', 'withdrawals', 'dr', 'paid out', 'debit amount'],
   credit:      ['credit', 'deposit', 'deposits', 'cr', 'paid in', 'credit amount'],
   description: ['description', 'narration', 'particulars', 'details', 'remarks', 'remark', 'note', 'transaction'],
+  drcr:        ['dr/cr', 'drcr', 'cr/dr', 'type', 'transaction type', 'txn type', 'indicator', 'dr / cr'],
   balance:     ['balance', 'bal', 'closing balance', 'running balance', 'available balance'],
 }
 
@@ -140,6 +141,11 @@ export default function StatementReconcile() {
       if (colMap.debit || colMap.credit) {
         const dr = parseAmount(row[colMap.debit]), cr = parseAmount(row[colMap.credit])
         if (cr > 0) { amount = cr; direction = 'credit' } else { amount = dr; direction = 'debit' }
+      } else if (colMap.amount && colMap.drcr) {
+        // Single amount column + a Dr/Cr flag ("C"/"D", "Cr"/"Dr", "Credit"/"Debit").
+        amount = parseAmount(row[colMap.amount])
+        const flag = String(row[colMap.drcr] || '').trim().toUpperCase()
+        direction = flag.startsWith('C') ? 'credit' : 'debit'
       } else {
         amount = parseAmount(row[colMap.amount])
       }
@@ -370,7 +376,7 @@ export default function StatementReconcile() {
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {Object.keys(FIELD_ALIASES).map(field => (
                 <div key={field}>
-                  <label className="label capitalize">{field}</label>
+                  <label className="label capitalize">{field === 'drcr' ? 'Dr/Cr flag' : field}</label>
                   <select className="input" value={colMap[field] || ''} onChange={e => setColMap(m => ({ ...m, [field]: e.target.value }))}>
                     <option value="">— skip —</option>
                     {headers.map(h => <option key={h} value={h}>{h}</option>)}
