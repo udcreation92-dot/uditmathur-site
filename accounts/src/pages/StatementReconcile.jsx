@@ -77,6 +77,11 @@ export default function StatementReconcile() {
   const [showNewAcc, setShowNewAcc] = useState(false)
   const [newAccName, setNewAccName] = useState('')
   const [newAccType, setNewAccType] = useState('expense')
+  // optional mirror entry in another book (cross-book transfer)
+  const [showMirror, setShowMirror] = useState(false)
+  const [mirrorBook, setMirrorBook] = useState('')
+  const [mirrorDr,   setMirrorDr]   = useState('')
+  const [mirrorCr,   setMirrorCr]   = useState('')
   const fileRef = useRef()
 
   const ACCOUNT_TYPES = ['asset', 'liability', 'equity', 'income', 'expense']
@@ -198,6 +203,7 @@ export default function StatementReconcile() {
     setBusy(true)
     let count = 0
     try {
+      const mirrorOn = showMirror && mirrorBook && mirrorDr && mirrorCr
       for (const t of chosen) {
         const { data: je, error } = await supabase.from('journal_entries').insert({
           book_id: selBook, date: t.date,
@@ -212,8 +218,22 @@ export default function StatementReconcile() {
           { entry_id: je.id, account_id: counterparty,  debit: intoAccount ? 0 : t.amount, credit: intoAccount ? t.amount : 0 },
         ])
         count++
+
+        // Optional mirror entry in another book (cross-book transfer).
+        if (mirrorOn) {
+          const { data: mje, error: merr } = await supabase.from('journal_entries').insert({
+            book_id: mirrorBook, date: t.date,
+            narration: t.description || 'Statement reconciliation (mirror)',
+            reference_no: null,
+          }).select('id').single()
+          if (merr) throw merr
+          await supabase.from('journal_lines').insert([
+            { entry_id: mje.id, account_id: mirrorDr, debit: t.amount, credit: 0 },
+            { entry_id: mje.id, account_id: mirrorCr, debit: 0, credit: t.amount },
+          ])
+        }
       }
-      toast.success(`Created ${count} entries`)
+      toast.success(`Created ${count} entr${count > 1 ? 'ies' : 'y'}${mirrorOn ? ' + mirror in other book' : ''}`)
       await runReconcile() // refresh — they should now be matched
     } catch (e) {
       toast.error(e.message)
@@ -392,6 +412,42 @@ export default function StatementReconcile() {
                   <button onClick={() => setShowNewAcc(false)} className="btn-secondary">Cancel</button>
                 </div>
               )}
+
+              {/* Optional cross-book mirror entry */}
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={showMirror} onChange={e => setShowMirror(e.target.checked)} />
+                  <span>Also create a <strong>mirror entry in another book</strong> (cross-book transfer, e.g. Jana Bank → MAAPL)</span>
+                </label>
+                {showMirror && (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2 bg-amber-50 border border-amber-100 rounded-lg p-3">
+                    <div>
+                      <label className="label">Mirror book</label>
+                      <select className="input" value={mirrorBook} onChange={e => { setMirrorBook(e.target.value); setMirrorDr(''); setMirrorCr('') }}>
+                        <option value="">— Select —</option>
+                        {books.filter(b => b.id !== selBook).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label">Debit account (in mirror book)</label>
+                      <select className="input" value={mirrorDr} onChange={e => setMirrorDr(e.target.value)} disabled={!mirrorBook}>
+                        <option value="">— Select —</option>
+                        {accounts.filter(a => a.book_id === mirrorBook).map(a => <option key={a.id} value={a.id}>{a.name} · {a.type}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label">Credit account (in mirror book)</label>
+                      <select className="input" value={mirrorCr} onChange={e => setMirrorCr(e.target.value)} disabled={!mirrorBook}>
+                        <option value="">— Select —</option>
+                        {accounts.filter(a => a.book_id === mirrorBook).map(a => <option key={a.id} value={a.id}>{a.name} · {a.type}</option>)}
+                      </select>
+                    </div>
+                    <p className="text-xs text-amber-700 md:col-span-3">
+                      For each selected transaction a second entry is posted in the mirror book: <strong>Dr</strong> the debit account / <strong>Cr</strong> the credit account, same date &amp; amount. Tip: filter to just the transfer rows first.
+                    </p>
+                  </div>
+                )}
+              </div>
 
               {/* Filters */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2 bg-gray-50 rounded-lg p-3">
