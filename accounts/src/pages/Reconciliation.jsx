@@ -3,10 +3,32 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { format } from 'date-fns'
 
+const daysApart = (a, b) => (a && b) ? Math.abs((new Date(a) - new Date(b)) / 86400000) : Infinity
+
+// Pair mirror-account entries: equal amount, opposite sign (one Dr, one Cr),
+// within the date tolerance. Returns the set of matched line ids on each side.
+function matchSides(linesA, linesB, tol) {
+  const b = linesB.map(l => ({ id: l.id, signed: (l.debit || 0) - (l.credit || 0), date: l.journal_entries?.date, used: false }))
+  const matchedA = new Set(), matchedB = new Set()
+  for (const la of linesA) {
+    const sa = (la.debit || 0) - (la.credit || 0)
+    let best = -1, bestDist = Infinity
+    for (let j = 0; j < b.length; j++) {
+      if (b[j].used) continue
+      if (Math.abs(sa + b[j].signed) >= 0.01) continue   // equal & opposite
+      const d = daysApart(la.journal_entries?.date, b[j].date)
+      if (d <= tol && d < bestDist) { best = j; bestDist = d }
+    }
+    if (best >= 0) { b[best].used = true; matchedA.add(la.id); matchedB.add(b[best].id) }
+  }
+  return { matchedA, matchedB }
+}
+
 export default function Reconciliation() {
-  const [links,   setLinks]   = useState([])
-  const [loading, setLoading] = useState(true)
-  const [detail,  setDetail]  = useState(null) // { link, linesA, linesB }
+  const [links,     setLinks]     = useState([])
+  const [loading,   setLoading]   = useState(true)
+  const [detail,    setDetail]    = useState(null) // { link, linesA, linesB }
+  const [tolerance, setTolerance] = useState(3)
 
   useEffect(() => { load() }, [])
 
@@ -49,10 +71,21 @@ export default function Reconciliation() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold">Reconciliation</h1>
-        <Link to="/accounts" className="btn-secondary text-sm">Manage Links</Link>
+        <div className="flex items-center gap-3">
+          <label className="text-xs text-gray-500 flex items-center gap-1">
+            Date tolerance ±
+            <input type="number" min="0" max="30" value={tolerance}
+              onChange={e => setTolerance(parseInt(e.target.value) || 0)}
+              className="input w-16 py-1 text-sm" /> days
+          </label>
+          <Link to="/accounts" className="btn-secondary text-sm">Manage Links</Link>
+        </div>
       </div>
+      <p className="text-xs text-gray-400">
+        In an expanded pair, <span className="px-1 rounded bg-green-100 text-green-700">green</span> rows have a matching entry on the other side; <span className="px-1 rounded bg-red-100 text-red-700">red</span> rows are unmatched (they cause the difference).
+      </p>
 
       {links.length === 0 && (
         <div className="card p-8 text-center text-gray-400">
@@ -92,17 +125,25 @@ export default function Reconciliation() {
               </div>
             </div>
             <button
-              onClick={() => setDetail(detail?.link.id === link.id ? null : link)}
+              onClick={() => setDetail(detail?.id === link.id ? null : link)}
               className="btn-secondary text-xs py-1">
               {detail?.id === link.id ? 'Hide' : 'View entries'}
             </button>
           </div>
 
-          {detail?.id === link.id && (
-            <div className="border-t border-gray-100 grid md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-100">
+          {detail?.id === link.id && (() => {
+            const { matchedA, matchedB } = matchSides(link.linesA, link.linesB, tolerance)
+            const unA = link.linesA.length - matchedA.size
+            const unB = link.linesB.length - matchedB.size
+            return (
+            <div className="border-t border-gray-100">
+              <p className="px-4 py-1.5 text-xs text-gray-500 bg-gray-50">
+                Matched {matchedA.size} pair(s) · unmatched: {unA} on left, {unB} on right (±{tolerance}d)
+              </p>
+              <div className="grid md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-100">
               {[
-                { label: `${link.account_a.books.name} › ${link.account_a.name}`, lines: link.linesA },
-                { label: `${link.account_b.books.name} › ${link.account_b.name}`, lines: link.linesB },
+                { label: `${link.account_a.books.name} › ${link.account_a.name}`, lines: link.linesA, matched: matchedA },
+                { label: `${link.account_b.books.name} › ${link.account_b.name}`, lines: link.linesB, matched: matchedB },
               ].map(side => (
                 <div key={side.label}>
                   <p className="px-4 py-2 text-xs font-semibold text-gray-500 bg-gray-50">{side.label}</p>
@@ -120,7 +161,7 @@ export default function Reconciliation() {
                         <tr><td colSpan={4} className="table-cell text-center text-gray-300 py-4">No entries</td></tr>
                       )}
                       {side.lines.map(l => (
-                        <tr key={l.id} className="hover:bg-gray-50">
+                        <tr key={l.id} className={side.matched.has(l.id) ? 'bg-green-50' : 'bg-red-50'}>
                           <td className="table-cell text-xs whitespace-nowrap">
                             {l.journal_entries?.date ? format(new Date(l.journal_entries.date), 'dd MMM yy') : ''}
                           </td>
@@ -133,8 +174,10 @@ export default function Reconciliation() {
                   </table>
                 </div>
               ))}
+              </div>
             </div>
-          )}
+            )
+          })()}
         </div>
       ))}
     </div>
