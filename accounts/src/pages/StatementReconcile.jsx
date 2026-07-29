@@ -67,6 +67,11 @@ export default function StatementReconcile() {
   const [busy,      setBusy]      = useState(false)
   const [counterparty, setCounterparty] = useState('')
   const [picked,    setPicked]    = useState({})     // index -> boolean (missing rows to create)
+  const [extraPicked, setExtraPicked] = useState({}) // index -> boolean (extra rows to delete)
+  // filters for the missing list
+  const [fAmount,   setFAmount]   = useState('')
+  const [fDesc,     setFDesc]     = useState('')
+  const [fDir,      setFDir]      = useState('all')
   const fileRef = useRef()
 
   useEffect(() => {
@@ -137,13 +142,14 @@ export default function StatementReconcile() {
 
       const { data: rows, error } = await supabase
         .from('journal_lines')
-        .select('debit, credit, journal_entries!inner(date, narration)')
+        .select('debit, credit, journal_entries!inner(id, date, narration)')
         .eq('account_id', selAcc)
         .gte('journal_entries.date', from)
         .lte('journal_entries.date', to)
       if (error) throw error
 
       const ledger = (rows || []).map(r => ({
+        entryId: r.journal_entries.id,
         date: r.journal_entries.date,
         amount: Math.abs((r.debit || 0) - (r.credit || 0)),
         narration: r.journal_entries.narration || '',
@@ -167,6 +173,8 @@ export default function StatementReconcile() {
 
       setResult({ matched, missing, extra, total: txns.length })
       setPicked(Object.fromEntries(missing.map((_, i) => [i, true])))
+      setExtraPicked({})
+      setFAmount(''); setFDesc(''); setFDir('all')
     } catch (e) {
       toast.error(e.message)
     } finally {
@@ -205,6 +213,40 @@ export default function StatementReconcile() {
       setBusy(false)
     }
   }
+
+  // Delete the checked "extra" ledger entries (the whole journal entry, both sides).
+  async function deleteExtra() {
+    const chosen = result.extra.filter((_, i) => extraPicked[i])
+    if (!chosen.length) return toast.error('No entries selected')
+    if (!confirm(`Delete ${chosen.length} journal entr${chosen.length > 1 ? 'ies' : 'y'}? This removes the entire entry (both sides) and cannot be undone.`)) return
+    setBusy(true)
+    try {
+      const ids = [...new Set(chosen.map(e => e.entryId).filter(Boolean))]
+      const { error } = await supabase.from('journal_entries').delete().in('id', ids)
+      if (error) throw error
+      toast.success(`Deleted ${ids.length} entr${ids.length > 1 ? 'ies' : 'y'}`)
+      await runReconcile()
+    } catch (e) {
+      toast.error(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Missing rows after applying the amount/description/direction filters (keeps original index).
+  const missingFiltered = (result?.missing || [])
+    .map((t, i) => ({ t, i }))
+    .filter(({ t }) =>
+      (!fAmount || String(t.amount).includes(fAmount.replace(/[₹,\s]/g, ''))) &&
+      (!fDesc || t.description.toLowerCase().includes(fDesc.toLowerCase())) &&
+      (fDir === 'all' || (fDir === 'In' && t.direction === 'credit') || (fDir === 'Out' && t.direction === 'debit'))
+    )
+  const setAllMissing = val => setPicked(p => {
+    const n = { ...p }; missingFiltered.forEach(({ i }) => { n[i] = val }); return n
+  })
+  const setAllExtra = val => setExtraPicked(
+    val ? Object.fromEntries(result.extra.map((_, i) => [i, true])) : {}
+  )
 
   const mappedOk = colMap.date && (colMap.amount || colMap.debit || colMap.credit)
 
@@ -296,9 +338,36 @@ export default function StatementReconcile() {
                   </select>
                 </div>
                 <button onClick={createMissing} disabled={busy || !counterparty} className="btn-primary">
-                  Create selected entries
+                  Create selected entries ({Object.values(picked).filter(Boolean).length})
                 </button>
               </div>
+
+              {/* Filters */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 bg-gray-50 rounded-lg p-3">
+                <div>
+                  <label className="label">Amount contains</label>
+                  <input className="input" value={fAmount} onChange={e => setFAmount(e.target.value)} placeholder="e.g. 1500" />
+                </div>
+                <div className="col-span-2">
+                  <label className="label">Description contains</label>
+                  <input className="input" value={fDesc} onChange={e => setFDesc(e.target.value)} placeholder="e.g. CRED, SWIGGY" />
+                </div>
+                <div>
+                  <label className="label">Direction</label>
+                  <select className="input" value={fDir} onChange={e => setFDir(e.target.value)}>
+                    <option value="all">All</option>
+                    <option value="In">In (credit)</option>
+                    <option value="Out">Out (debit)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 text-xs">
+                <button onClick={() => setAllMissing(true)}  className="text-brand-600 hover:underline font-medium">Select all{fAmount||fDesc||fDir!=='all' ? ' (filtered)' : ''}</button>
+                <button onClick={() => setAllMissing(false)} className="text-gray-500 hover:underline">Deselect all{fAmount||fDesc||fDir!=='all' ? ' (filtered)' : ''}</button>
+                <span className="text-gray-400">showing {missingFiltered.length} of {result.missing.length}</span>
+              </div>
+
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[560px] text-sm">
                   <thead>
@@ -311,7 +380,7 @@ export default function StatementReconcile() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {result.missing.map((t, i) => (
+                    {missingFiltered.map(({ t, i }) => (
                       <tr key={i} className="hover:bg-gray-50">
                         <td className="table-cell">
                           <input type="checkbox" checked={!!picked[i]} onChange={e => setPicked(p => ({ ...p, [i]: e.target.checked }))} />
@@ -322,6 +391,9 @@ export default function StatementReconcile() {
                         <td className="table-cell text-xs">{t.description}</td>
                       </tr>
                     ))}
+                    {missingFiltered.length === 0 && (
+                      <tr><td colSpan={5} className="table-cell text-center text-gray-400 py-4 text-xs">No rows match the filters</td></tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -332,20 +404,33 @@ export default function StatementReconcile() {
           {result.extra.length > 0 && (
             <div className="card p-5 space-y-3">
               <h2 className="font-semibold">In ledger, not on this statement ({result.extra.length})</h2>
-              <p className="text-xs text-gray-500">These may be from a different period, duplicates, or entries the statement doesn't cover — review manually.</p>
+              <p className="text-xs text-gray-500">These may be from a different period, duplicates, or entries the statement doesn't cover — review, then delete any that are wrong.</p>
+              <div className="flex items-center gap-3 text-xs">
+                <button onClick={() => setAllExtra(true)}  className="text-brand-600 hover:underline font-medium">Select all</button>
+                <button onClick={() => setAllExtra(false)} className="text-gray-500 hover:underline">Deselect all</button>
+                <button onClick={deleteExtra} disabled={busy} className="ml-auto text-red-600 hover:text-red-700 font-medium">
+                  🗑 Delete selected ({Object.values(extraPicked).filter(Boolean).length})
+                </button>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[480px] text-sm">
                   <thead>
-                    <tr><th className="table-head">Date</th><th className="table-head text-right">Amount</th><th className="table-head">Narration</th></tr>
+                    <tr><th className="table-head w-8"></th><th className="table-head">Date</th><th className="table-head text-right">Amount</th><th className="table-head">Narration</th></tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {result.extra.slice(0, 200).map((l, i) => (
+                    {result.extra.slice(0, 300).map((l, i) => (
                       <tr key={i} className="hover:bg-gray-50">
+                        <td className="table-cell">
+                          <input type="checkbox" checked={!!extraPicked[i]} onChange={e => setExtraPicked(p => ({ ...p, [i]: e.target.checked }))} />
+                        </td>
                         <td className="table-cell whitespace-nowrap text-xs">{l.date}</td>
                         <td className="table-cell text-right font-medium">{fmt(l.amount)}</td>
                         <td className="table-cell text-xs">{l.narration}</td>
                       </tr>
                     ))}
+                    {result.extra.length > 300 && (
+                      <tr><td colSpan={4} className="table-cell text-center text-gray-400 py-2 text-xs">Showing first 300 of {result.extra.length}</td></tr>
+                    )}
                   </tbody>
                 </table>
               </div>
