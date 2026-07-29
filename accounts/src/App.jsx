@@ -12,6 +12,7 @@ import Ledger from './pages/Ledger'
 import TrialBalance from './pages/TrialBalance'
 import BulkImport from './pages/BulkImport'
 import Reconciliation from './pages/Reconciliation'
+import StatementReconcile from './pages/StatementReconcile'
 import Reports from './pages/Reports'
 import AverageBalance from './pages/AverageBalance'
 import Commitments from './pages/Commitments'
@@ -58,6 +59,7 @@ export default function App() {
           <Route path="trial-balance" element={<TrialBalance />} />
           <Route path="import" element={<BulkImport />} />
           <Route path="reconciliation" element={<Reconciliation />} />
+          <Route path="statement-reconcile" element={<StatementReconcile />} />
           <Route path="reports" element={<Reports />} />
           <Route path="avg-balance" element={<AverageBalance />} />
           <Route path="commitments" element={<Commitments />} />

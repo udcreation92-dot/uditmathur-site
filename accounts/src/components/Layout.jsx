@@ -11,6 +11,7 @@ const nav = [
   { to: '/ledger',         label: 'Ledger',          icon: '📋' },
   { to: '/trial-balance',  label: 'Trial Balance',   icon: '⚖️' },
   { to: '/reconciliation', label: 'Reconciliation',  icon: '🔄' },
+  { to: '/statement-reconcile', label: 'Statement Reconcile', icon: '🔍' },
   { to: '/reports',        label: 'Reports',         icon: '📊' },
   { to: '/avg-balance',     label: 'Avg Balance',     icon: '📈' },
   { to: '/commitments',    label: 'Commitments',     icon: '📅' },
