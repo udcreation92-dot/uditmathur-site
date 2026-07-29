@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
@@ -72,7 +73,13 @@ export default function StatementReconcile() {
   const [fAmount,   setFAmount]   = useState('')
   const [fDesc,     setFDesc]     = useState('')
   const [fDir,      setFDir]      = useState('all')
+  // inline new-account creation for the counterparty
+  const [showNewAcc, setShowNewAcc] = useState(false)
+  const [newAccName, setNewAccName] = useState('')
+  const [newAccType, setNewAccType] = useState('expense')
   const fileRef = useRef()
+
+  const ACCOUNT_TYPES = ['asset', 'liability', 'equity', 'income', 'expense']
 
   useEffect(() => {
     (async () => {
@@ -86,6 +93,7 @@ export default function StatementReconcile() {
   }, [])
 
   const bookAccounts = accounts.filter(a => a.book_id === selBook)
+  const bookName = books.find(b => b.id === selBook)?.name || ''
 
   function handleFile(e) {
     const file = e.target.files?.[0]; if (!file) return
@@ -214,6 +222,26 @@ export default function StatementReconcile() {
     }
   }
 
+  // Create a new account in the selected book and pick it as the counterparty.
+  async function createAccount() {
+    if (!newAccName.trim()) return toast.error('Enter an account name')
+    setBusy(true)
+    try {
+      const { data, error } = await supabase.from('accounts')
+        .insert({ book_id: selBook, name: newAccName.trim(), type: newAccType })
+        .select('id, name, code, type, book_id').single()
+      if (error) throw error
+      setAccounts(a => [...a, data])
+      setCounterparty(data.id)
+      setShowNewAcc(false); setNewAccName(''); setNewAccType('expense')
+      toast.success(`Account "${data.name}" created`)
+    } catch (e) {
+      toast.error(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   // Delete the checked "extra" ledger entries (the whole journal entry, both sides).
   async function deleteExtra() {
     const chosen = result.extra.filter((_, i) => extraPicked[i])
@@ -332,15 +360,38 @@ export default function StatementReconcile() {
               <div className="flex items-end gap-3 flex-wrap">
                 <div>
                   <label className="label">Counterparty account for new entries</label>
-                  <select className="input w-64" value={counterparty} onChange={e => setCounterparty(e.target.value)}>
-                    <option value="">— Select —</option>
-                    {bookAccounts.filter(a => a.id !== selAcc).map(a => <option key={a.id} value={a.id}>{a.name} · {a.type}</option>)}
-                  </select>
+                  <div className="flex gap-1">
+                    <select className="input w-64" value={counterparty} onChange={e => setCounterparty(e.target.value)}>
+                      <option value="">— Select —</option>
+                      {bookAccounts.filter(a => a.id !== selAcc).map(a => <option key={a.id} value={a.id}>{a.name} · {a.type}</option>)}
+                    </select>
+                    <button type="button" title="New account" onClick={() => setShowNewAcc(v => !v)}
+                      className="btn-secondary px-2 text-lg leading-none">+</button>
+                  </div>
                 </div>
                 <button onClick={createMissing} disabled={busy || !counterparty} className="btn-primary">
                   Create selected entries ({Object.values(picked).filter(Boolean).length})
                 </button>
               </div>
+
+              {/* Inline new-account form */}
+              {showNewAcc && (
+                <div className="flex items-end gap-2 flex-wrap bg-brand-50 border border-brand-100 rounded-lg p-3">
+                  <div>
+                    <label className="label">New account name</label>
+                    <input className="input" value={newAccName} onChange={e => setNewAccName(e.target.value)}
+                      placeholder="e.g. Bank Charges" autoFocus />
+                  </div>
+                  <div>
+                    <label className="label">Type</label>
+                    <select className="input" value={newAccType} onChange={e => setNewAccType(e.target.value)}>
+                      {ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+                    </select>
+                  </div>
+                  <button onClick={createAccount} disabled={busy} className="btn-primary">Create in {bookName}</button>
+                  <button onClick={() => setShowNewAcc(false)} className="btn-secondary">Cancel</button>
+                </div>
+              )}
 
               {/* Filters */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2 bg-gray-50 rounded-lg p-3">
@@ -415,7 +466,7 @@ export default function StatementReconcile() {
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[480px] text-sm">
                   <thead>
-                    <tr><th className="table-head w-8"></th><th className="table-head">Date</th><th className="table-head text-right">Amount</th><th className="table-head">Narration</th></tr>
+                    <tr><th className="table-head w-8"></th><th className="table-head">Date</th><th className="table-head text-right">Amount</th><th className="table-head">Narration</th><th className="table-head w-12"></th></tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {result.extra.slice(0, 300).map((l, i) => (
@@ -426,10 +477,13 @@ export default function StatementReconcile() {
                         <td className="table-cell whitespace-nowrap text-xs">{l.date}</td>
                         <td className="table-cell text-right font-medium">{fmt(l.amount)}</td>
                         <td className="table-cell text-xs">{l.narration}</td>
+                        <td className="table-cell">
+                          <Link to={`/entry/${l.entryId}/edit`} className="text-brand-600 hover:text-brand-700 text-xs">Edit</Link>
+                        </td>
                       </tr>
                     ))}
                     {result.extra.length > 300 && (
-                      <tr><td colSpan={4} className="table-cell text-center text-gray-400 py-2 text-xs">Showing first 300 of {result.extra.length}</td></tr>
+                      <tr><td colSpan={5} className="table-cell text-center text-gray-400 py-2 text-xs">Showing first 300 of {result.extra.length}</td></tr>
                     )}
                   </tbody>
                 </table>
