@@ -188,21 +188,36 @@ export default function StatementReconcile() {
       const missing = []
       const reversed = []   // matched by amount+date but booked the wrong way
       let matched = 0
-      for (const t of txns) {
+
+      // Find the closest-date unused ledger line with matching amount.
+      // requireDir: true=must be debit, false=must be credit, null=any direction.
+      function findMatch(t, requireDir) {
         let best = -1, bestDist = Infinity
         for (let i = 0; i < ledger.length; i++) {
           if (ledger[i].used) continue
           if (Math.abs(ledger[i].amount - t.amount) >= 0.01) continue
+          if (requireDir !== null && (ledger[i].signed > 0) !== requireDir) continue
           const d = daysApart(ledger[i].date, t.date)
           if (d <= tolerance && d < bestDist) { best = i; bestDist = d }
         }
-        if (best >= 0) {
-          ledger[best].used = true
-          // A statement "credit" (money IN) should be a DEBIT to this asset account.
-          const expectDebit = t.direction === 'credit'
-          const isDebit = ledger[best].signed > 0
-          if (expectDebit === isDebit) matched++
-          else reversed.push({ ...t, entryId: ledger[best].entryId, narration: ledger[best].narration })
+        return best
+      }
+
+      // Pass 1: match entries booked the CORRECT way first (so same-amount /
+      // same-date opposite pairs don't get crossed and falsely flagged).
+      const unmatched = []
+      for (const t of txns) {
+        const expectDebit = t.direction === 'credit'   // money IN → debit to this asset
+        const idx = findMatch(t, expectDebit)
+        if (idx >= 0) { ledger[idx].used = true; matched++ }
+        else unmatched.push(t)
+      }
+      // Pass 2: leftovers — a same amount/date match now can only be reversed.
+      for (const t of unmatched) {
+        const idx = findMatch(t, null)
+        if (idx >= 0) {
+          ledger[idx].used = true
+          reversed.push({ ...t, entryId: ledger[idx].entryId, narration: ledger[idx].narration })
         } else {
           missing.push(t)
         }
