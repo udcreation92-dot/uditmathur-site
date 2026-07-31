@@ -13,6 +13,28 @@
   padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
 }
 
+/* ── Invoice blueprint template ─────────────────────────────────────────── */
+.blueprint-grid {
+  background-image:
+    repeating-linear-gradient(0deg,  oklch(90% 0.01 235 / 0.5) 0, oklch(90% 0.01 235 / 0.5) 1px, transparent 1px, transparent 24px),
+    repeating-linear-gradient(90deg, oklch(90% 0.01 235 / 0.5) 0, oklch(90% 0.01 235 / 0.5) 1px, transparent 1px, transparent 24px);
+}
+/* On-screen preview: centre the A4 sheet with a subtle shadow */
+.invoice-preview .invoice-page {
+  margin: 0 auto;
+  box-shadow: 0 4px 24px rgb(0 0 0 / 0.12);
+}
+
+@media print {
+  @page { size: A4; margin: 0; }
+  body { background: #fff; }
+  /* Hide everything except the invoice sheet(s) */
+  body.printing-invoice .no-print,
+  body.printing-invoice aside,
+  body.printing-invoice header { display: none !important; }
+  .invoice-page { box-shadow: none !important; page-break-after: always; }
+}
+
 @layer components {
   .btn {
     @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed;

@@ -129,14 +129,69 @@ function AccountSelect({ value, bookId, bookAccounts, books, allAccounts, onSele
 
 // ─── single entry block ──────────────────────────────────────────────────────
 
+function GstSplitHelper({ entry, bookAccounts, inputGstAccountId, onApply }) {
+  const [open, setOpen] = useState(false)
+  const [acc, setAcc]   = useState('')
+  const [gross, setGross] = useState('')
+  const [rate, setRate]   = useState('18')
+
+  const g = parseFloat(gross) || 0
+  const r = parseFloat(rate) || 0
+  const taxable = g / (1 + r / 100)
+  const gst = g - taxable
+
+  function apply() {
+    if (!acc || g <= 0) { toast.error('Pick expense account and gross amount'); return }
+    onApply([
+      { account_id: acc, debit: taxable.toFixed(2) },
+      { account_id: inputGstAccountId, debit: gst.toFixed(2) },
+    ])
+    setOpen(false); setAcc(''); setGross('')
+  }
+
+  if (!open) return (
+    <button type="button" onClick={() => setOpen(true)}
+      className="text-xs text-brand-600 hover:underline">＋ Split GST input (GST firm)</button>
+  )
+  return (
+    <div className="rounded-lg border border-brand-200 bg-brand-50/40 p-3 space-y-2">
+      <div className="text-xs font-semibold text-gray-600">Split a GST-inclusive expense into taxable + input GST (two Dr lines)</div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <select className="input col-span-2" value={acc} onChange={e => setAcc(e.target.value)}>
+          <option value="">Expense account…</option>
+          {bookAccounts.filter(a => a.type === 'expense').map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+        </select>
+        <input className="input text-right" type="number" min="0" step="0.01" placeholder="Gross ₹" value={gross} onChange={e => setGross(e.target.value)} />
+        <input className="input text-right" type="number" min="0" step="0.01" placeholder="GST %" value={rate} onChange={e => setRate(e.target.value)} />
+      </div>
+      <div className="text-xs text-gray-500">Taxable ₹{taxable ? taxable.toFixed(2) : '0.00'} · Input GST ₹{gst ? gst.toFixed(2) : '0.00'}</div>
+      <div className="flex gap-2">
+        <button type="button" onClick={apply} className="btn-primary text-xs py-1">Add lines</button>
+        <button type="button" onClick={() => setOpen(false)} className="btn-secondary text-xs py-1">Cancel</button>
+      </div>
+    </div>
+  )
+}
+
 function EntryBlock({
   entry, idx, books, allAccounts, onUpdate, onRemove,
-  canRemove, driveReady, onConnectDrive, onAccountCreated,
+  canRemove, driveReady, onConnectDrive, onAccountCreated, gstMap,
 }) {
   const fileRef = useRef()
   const scanRef = useRef()
 
   const bookAccounts = allAccounts.filter(a => a.book_id === entry.book_id)
+  const inputGstAccountId = gstMap[entry.book_id] || null
+
+  function applyGstSplit(newLines) {
+    // fill blank default lines first, then append
+    const filled = [...entry.lines]
+    const withIds = newLines.map(l => ({ _id: uid(), account_id: l.account_id, debit: l.debit, credit: '' }))
+    let out = filled.filter(l => l.account_id || l.debit || l.credit)
+    out = [...out, ...withIds]
+    while (out.length < 2) out.push(emptyLine())
+    onUpdate({ ...entry, lines: out })
+  }
 
   const totalDr   = entry.lines.reduce((s, l) => s + (parseFloat(l.debit)  || 0), 0)
   const totalCr   = entry.lines.reduce((s, l) => s + (parseFloat(l.credit) || 0), 0)
@@ -305,8 +360,14 @@ function EntryBlock({
 
         {/* Totals row */}
         <div className="px-3 py-2 bg-gray-50 flex items-center justify-between gap-4">
-          <button type="button" onClick={addLine}
-            className="text-sm text-brand-600 hover:underline font-medium">+ Add line</button>
+          <div className="flex items-center gap-4">
+            <button type="button" onClick={addLine}
+              className="text-sm text-brand-600 hover:underline font-medium">+ Add line</button>
+            {inputGstAccountId && (
+              <GstSplitHelper entry={entry} bookAccounts={bookAccounts}
+                inputGstAccountId={inputGstAccountId} onApply={applyGstSplit} />
+            )}
+          </div>
           <div className="flex items-center gap-4 text-sm font-bold">
             <span className="text-gray-500 hidden sm:inline">Total</span>
             <span className="text-gray-700">
@@ -426,6 +487,7 @@ export default function NewEntry({ entryId = null, onDone = null, embedded = fal
   const navigate = useNavigate()
 
   const [books,      setBooks]      = useState([])
+  const [gstMap,     setGstMap]     = useState({})   // book_id -> input_gst_account_id (GST-enabled firms only)
   const [allAccounts,setAllAccounts]= useState([])
   const [entries,    setEntries]    = useState([emptyEntry()])
   const [saving,     setSaving]     = useState(false)
@@ -434,12 +496,19 @@ export default function NewEntry({ entryId = null, onDone = null, embedded = fal
   // Load books + accounts
   useEffect(() => {
     async function load() {
-      const [{ data: bk }, { data: ac }] = await Promise.all([
-        supabase.from('books').select('id, name').order('name'),
+      const [{ data: bk }, { data: ac }, { data: fp }] = await Promise.all([
+        supabase.from('books').select('id, name, gst_enabled').order('name'),
         supabase.from('accounts').select('id, name, code, type, book_id').order('name'),
+        supabase.from('firm_profiles').select('book_id, input_gst_account_id'),
       ])
       setBooks(bk || [])
       setAllAccounts(ac || [])
+      const gm = {}
+      for (const b of (bk || [])) if (b.gst_enabled) {
+        const prof = (fp || []).find(p => p.book_id === b.id)
+        if (prof?.input_gst_account_id) gm[b.id] = prof.input_gst_account_id
+      }
+      setGstMap(gm)
 
       // Pre-fill default book
       if (bk?.length && !editId) {
@@ -607,6 +676,7 @@ export default function NewEntry({ entryId = null, onDone = null, embedded = fal
           driveReady={driveReady}
           onConnectDrive={connectDrive}
           onAccountCreated={handleAccountCreated}
+          gstMap={gstMap}
         />
       ))}
 

@@ -18,6 +18,13 @@ import Reports from './pages/Reports'
 import AverageBalance from './pages/AverageBalance'
 import Commitments from './pages/Commitments'
 import FundOptimizer from './pages/FundOptimizer'
+import FirmProfile from './pages/FirmProfile'
+import Clients from './pages/Clients'
+import WorkOrders from './pages/WorkOrders'
+import Invoices from './pages/Invoices'
+import InvoiceBuilder from './pages/InvoiceBuilder'
+import InvoicePrintPage from './pages/InvoicePrintPage'
+import GstSummary from './pages/GstSummary'
 
 function ProtectedRoute({ session, children }) {
   if (!session) return <Navigate to="/login" replace />
@@ -46,6 +53,10 @@ export default function App() {
       <Toaster position="top-right" />
       <Routes>
         <Route path="/login" element={session ? <Navigate to="/" replace /> : <Login />} />
+        {/* Full-page invoice print/view — outside the app chrome so it prints clean */}
+        <Route path="/invoices/:id/print" element={
+          <ProtectedRoute session={session}><InvoicePrintPage /></ProtectedRoute>
+        } />
         <Route path="/" element={
           <ProtectedRoute session={session}>
             <EntryModalProvider>
@@ -67,6 +78,13 @@ export default function App() {
           <Route path="avg-balance" element={<AverageBalance />} />
           <Route path="commitments" element={<Commitments />} />
           <Route path="fund-optimizer" element={<FundOptimizer />} />
+          <Route path="firm-profile" element={<FirmProfile />} />
+          <Route path="clients" element={<Clients />} />
+          <Route path="work-orders" element={<WorkOrders />} />
+          <Route path="invoices" element={<Invoices />} />
+          <Route path="invoices/new" element={<InvoiceBuilder />} />
+          <Route path="invoices/:id/edit" element={<InvoiceBuilder />} />
+          <Route path="gst" element={<GstSummary />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
