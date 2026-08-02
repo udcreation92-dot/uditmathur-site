@@ -33,14 +33,24 @@ export default function TrialBalance() {
       .order('name')
 
     const results = await Promise.all((accounts || []).map(async acc => {
-      let q = supabase.from('journal_lines')
-        .select('debit, credit, journal_entries!inner(book_id, date)')
-        .eq('account_id', acc.id)
-        .eq('journal_entries.book_id', selBook)
-      if (asOf) q = q.lte('journal_entries.date', asOf)
-      const { data: lines } = await q
-      const dr = (lines || []).reduce((s, l) => s + (l.debit  || 0), 0)
-      const cr = (lines || []).reduce((s, l) => s + (l.credit || 0), 0)
+      // Paginate: PostgREST caps a response at 1000 rows, so a high-volume
+      // account would otherwise be silently truncated and mis-totalled.
+      const PAGE = 1000
+      let offset = 0, dr = 0, cr = 0
+      for (;;) {
+        let q = supabase.from('journal_lines')
+          .select('debit, credit, journal_entries!inner(book_id, date)')
+          .eq('account_id', acc.id)
+          .eq('journal_entries.book_id', selBook)
+          .order('id', { ascending: true })
+          .range(offset, offset + PAGE - 1)
+        if (asOf) q = q.lte('journal_entries.date', asOf)
+        const { data: lines, error } = await q
+        if (error || !lines) break
+        for (const l of lines) { dr += l.debit || 0; cr += l.credit || 0 }
+        if (lines.length < PAGE) break
+        offset += PAGE
+      }
       return { ...acc, dr, cr, balance: dr - cr }
     }))
 

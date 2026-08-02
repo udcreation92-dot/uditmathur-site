@@ -11,7 +11,33 @@ function normalBalance(type, dr, cr) {
   return cr - dr
 }
 
-async function fetchBalances(bookId, asOf) {
+// Page through ALL journal lines for a book (optionally within [from, to]).
+// PostgREST caps a single response at 1000 rows, so we must paginate — otherwise
+// large books get silently truncated and every balance comes out wrong.
+async function fetchAllLines(bookId, { from, to } = {}) {
+  const PAGE = 1000
+  let offset = 0
+  const all = []
+  for (;;) {
+    let q = supabase
+      .from('journal_lines')
+      .select('account_id, debit, credit, journal_entries!inner(book_id, date)')
+      .eq('journal_entries.book_id', bookId)
+      .order('id', { ascending: true })
+      .range(offset, offset + PAGE - 1)
+    if (from) q = q.gte('journal_entries.date', from)
+    if (to)   q = q.lte('journal_entries.date', to)
+    const { data, error } = await q
+    if (error || !data) break
+    all.push(...data)
+    if (data.length < PAGE) break
+    offset += PAGE
+  }
+  return all
+}
+
+// range = { from?, to? }  (both ISO yyyy-mm-dd, inclusive)
+async function fetchBalances(bookId, range = {}) {
   const { data: accounts } = await supabase
     .from('accounts')
     .select('id, name, code, type')
@@ -20,19 +46,11 @@ async function fetchBalances(bookId, asOf) {
 
   if (!accounts?.length) return []
 
-  // Fetch all lines in one query, join entries for date filter
-  let q = supabase
-    .from('journal_lines')
-    .select('account_id, debit, credit, journal_entries!inner(book_id, date)')
-    .eq('journal_entries.book_id', bookId)
-
-  if (asOf) q = q.lte('journal_entries.date', asOf)
-
-  const { data: lines } = await q
+  const lines = await fetchAllLines(bookId, range)
 
   // Aggregate per account
   const map = {}
-  for (const l of lines || []) {
+  for (const l of lines) {
     if (!map[l.account_id]) map[l.account_id] = { dr: 0, cr: 0 }
     map[l.account_id].dr += l.debit  || 0
     map[l.account_id].cr += l.credit || 0
@@ -60,32 +78,9 @@ function ProfitLoss({ books }) {
 
   async function generate() {
     setLoading(true)
-    const all = await fetchBalances(selBook, to)
-
-    // Apply from-date: subtract balances before 'from'
-    let fromAdjust = {}
-    if (from) {
-      let q = supabase
-        .from('journal_lines')
-        .select('account_id, debit, credit, journal_entries!inner(book_id, date)')
-        .eq('journal_entries.book_id', selBook)
-        .lt('journal_entries.date', from)
-      const { data: priorLines } = await q
-      for (const l of priorLines || []) {
-        if (!fromAdjust[l.account_id]) fromAdjust[l.account_id] = { dr: 0, cr: 0 }
-        fromAdjust[l.account_id].dr += l.debit  || 0
-        fromAdjust[l.account_id].cr += l.credit || 0
-      }
-    }
-
-    const adjusted = all.map(a => {
-      const adj = fromAdjust[a.id] || { dr: 0, cr: 0 }
-      const dr  = a.dr - adj.dr
-      const cr  = a.cr - adj.cr
-      return { ...a, dr, cr, balance: normalBalance(a.type, dr, cr) }
-    })
-
-    setRows(adjusted.filter(a => ['income', 'expense'].includes(a.type)))
+    // P&L is period-scoped: filter lines directly to [from, to] (inclusive).
+    const all = await fetchBalances(selBook, { from: from || undefined, to: to || undefined })
+    setRows(all.filter(a => ['income', 'expense'].includes(a.type)))
     setLoading(false)
   }
 
@@ -215,7 +210,7 @@ function BalanceSheet({ books }) {
 
   async function generate() {
     setLoading(true)
-    const all = await fetchBalances(selBook, asOf)
+    const all = await fetchBalances(selBook, { to: asOf || undefined })
 
     // Compute net profit to add to equity side
     const income   = all.filter(a => a.type === 'income').reduce((s, a) => s + a.balance, 0)
