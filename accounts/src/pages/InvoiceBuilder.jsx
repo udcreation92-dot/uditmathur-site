@@ -23,7 +23,6 @@ export default function InvoiceBuilder() {
   const [busy,     setBusy]     = useState(false)
   const [status,   setStatus]   = useState('proforma')
   const [stageId,  setStageId]  = useState(prefill.stage_id || null)
-  const [newLedger,setNewLedger]= useState('')   // inline "create party ledger" text
 
   const [form, setForm] = useState({
     book_id: prefill.book_id || '', client_id: prefill.client_id || '',
@@ -86,21 +85,20 @@ export default function InvoiceBuilder() {
   const client = clients.find(c => c.id === form.client_id)
   const bookAccounts = accounts.filter(a => a.book_id === form.book_id)
 
-  // Default place of supply + party ledger when client changes
+  // Default place of supply from the client's state
   useEffect(() => {
-    if (!client) return
-    setForm(f => {
-      const next = { ...f }
-      if (!f.place_of_supply) next.place_of_supply = client.state_code || ''
-      if (!f.debtor_account_id) {
-        // try to match an existing ledger in this book by the client's name
-        const match = accounts.find(a => a.book_id === form.book_id &&
-          a.name.trim().toLowerCase() === client.name.trim().toLowerCase())
-        next.debtor_account_id = match?.id || firm?.debtors_account_id || ''
-      }
-      return next
-    })
-  }, [form.client_id, firm])
+    if (client && !form.place_of_supply) setForm(f => ({ ...f, place_of_supply: client.state_code || '' }))
+  }, [form.client_id])
+
+  // Resolve the party ledger to debit from the client's per-firm mapping (set in Clients)
+  useEffect(() => {
+    if (!form.client_id || !form.book_id) { setForm(f => ({ ...f, debtor_account_id: '' })); return }
+    (async () => {
+      const { data } = await supabase.from('client_ledgers').select('account_id')
+        .eq('client_id', form.client_id).eq('book_id', form.book_id).maybeSingle()
+      setForm(f => ({ ...f, debtor_account_id: data?.account_id || '' }))
+    })()
+  }, [form.client_id, form.book_id])
 
   const interstate = gstOn && isInterstate(form.place_of_supply, firm?.state_code)
 
@@ -122,19 +120,6 @@ export default function InvoiceBuilder() {
 
   const valid = form.book_id && form.client_id && form.invoice_date &&
     computed.some(it => it.taxable_value > 0)
-
-  async function createLedger() {
-    const name = newLedger.trim()
-    if (!name || !form.book_id) return
-    const { data, error } = await supabase.from('accounts')
-      .insert({ book_id: form.book_id, name, type: 'asset' })
-      .select('id, name, book_id').single()
-    if (error) return toast.error(error.message)
-    setAccounts(a => [...a, data])
-    set('debtor_account_id', data.id)
-    setNewLedger('')
-    toast.success(`Ledger "${name}" created`)
-  }
 
   // Next gap-free sequence for a book + FY. `taxSide=true` counts approved (numbered)
   // invoices, `false` counts unapproved proformas — two independent series.
@@ -199,7 +184,7 @@ export default function InvoiceBuilder() {
   async function approve() {
     if (!valid) return toast.error('Complete the invoice first')
     // require posting accounts
-    if (!form.debtor_account_id) return toast.error('Pick the party ledger to debit')
+    if (!form.debtor_account_id) return toast.error("Set this client's ledger for this firm in Clients first")
     const missing = []
     if (!firm?.sales_account_id) missing.push('Sales')
     if (gstOn && totals.grand_total !== totals.taxable_total && !firm?.output_gst_account_id) missing.push('Output GST')
@@ -291,18 +276,13 @@ export default function InvoiceBuilder() {
             <input className="input" type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} />
           </div>
           <div className="sm:col-span-3">
-            <label className="label">Debit ledger — party account *</label>
-            <div className="flex gap-2">
-              <select className="input flex-1" value={form.debtor_account_id} onChange={e => set('debtor_account_id', e.target.value)}>
-                <option value="">— Select the party's ledger —</option>
-                {bookAccounts.map(a => <option key={a.id} value={a.id}>{a.name} · {a.type}</option>)}
-              </select>
-              <input className="input w-48" placeholder="+ new ledger name" value={newLedger}
-                onChange={e => setNewLedger(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); createLedger() } }} />
-              <button type="button" onClick={createLedger} disabled={!newLedger.trim()} className="btn-secondary text-sm shrink-0">Create</button>
-            </div>
-            <p className="text-xs text-gray-400 mt-1">This account is debited when the invoice is approved (defaults to a ledger matching the client's name).</p>
+            <label className="label">Debit ledger — party account</label>
+            {form.debtor_account_id
+              ? <p className="text-sm">Will debit <span className="font-medium">{bookAccounts.find(a => a.id === form.debtor_account_id)?.name || '—'}</span>
+                  <span className="text-gray-400"> — set on the client's profile</span></p>
+              : form.client_id
+                ? <p className="text-sm text-amber-600">No ledger set for this client under this firm — set it in <button type="button" onClick={() => navigate('/clients')} className="underline">Clients</button> before approving.</p>
+                : <p className="text-sm text-gray-400">Select a client — its ledger comes from the client's profile.</p>}
           </div>
           {gstOn && (
             <div className="sm:col-span-2">

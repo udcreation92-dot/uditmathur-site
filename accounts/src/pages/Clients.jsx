@@ -6,14 +6,28 @@ const empty = () => ({ name: '', address: '', gstin: '', state_code: '', email: 
 
 export default function Clients() {
   const [clients, setClients] = useState([])
+  const [books,   setBooks]   = useState([])   // invoicing-enabled firms
+  const [accounts,setAccounts]= useState([])   // all accounts (per book)
+  const [ledgerMap, setLedgerMap] = useState({}) // client_id -> { book_id: account_id }
   const [form,    setForm]    = useState(empty())
+  const [ledgers, setLedgers] = useState({})   // book_id -> account_id (for the form)
   const [editId,  setEditId]  = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving,  setSaving]  = useState(false)
 
   async function load() {
-    const { data } = await supabase.from('clients').select('*').order('name')
-    setClients(data || [])
+    const [{ data: cl }, { data: bk }, { data: ac }, { data: cled }] = await Promise.all([
+      supabase.from('clients').select('*').order('name'),
+      supabase.from('books').select('id, name').eq('invoicing_enabled', true).order('name'),
+      supabase.from('accounts').select('id, name, type, book_id').order('name'),
+      supabase.from('client_ledgers').select('*'),
+    ])
+    setClients(cl || [])
+    setBooks(bk || [])
+    setAccounts(ac || [])
+    const m = {}
+    for (const r of (cled || [])) { (m[r.client_id] ||= {})[r.book_id] = r.account_id }
+    setLedgerMap(m)
     setLoading(false)
   }
   useEffect(() => { load() }, [])
@@ -26,10 +40,11 @@ export default function Clients() {
       name: c.name || '', address: c.address || '', gstin: c.gstin || '',
       state_code: c.state_code || '', email: c.email || '', phone: c.phone || '',
     })
+    setLedgers({ ...(ledgerMap[c.id] || {}) })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  function reset() { setEditId(null); setForm(empty()) }
+  function reset() { setEditId(null); setForm(empty()); setLedgers({}) }
 
   async function save(e) {
     e.preventDefault()
@@ -43,11 +58,28 @@ export default function Clients() {
       email: form.email.trim() || null,
       phone: form.phone.trim() || null,
     }
-    const { error } = editId
-      ? await supabase.from('clients').update(payload).eq('id', editId)
-      : await supabase.from('clients').insert(payload)
-    if (error) toast.error(error.message)
-    else { toast.success(editId ? 'Client updated' : 'Client added'); reset(); load() }
+    let clientId = editId
+    if (editId) {
+      const { error } = await supabase.from('clients').update(payload).eq('id', editId)
+      if (error) { toast.error(error.message); setSaving(false); return }
+    } else {
+      const { data, error } = await supabase.from('clients').insert(payload).select('id').single()
+      if (error) { toast.error(error.message); setSaving(false); return }
+      clientId = data.id
+    }
+
+    // Sync per-firm ledger mappings
+    for (const b of books) {
+      const acc = ledgers[b.id]
+      if (acc) {
+        await supabase.from('client_ledgers').upsert(
+          { client_id: clientId, book_id: b.id, account_id: acc }, { onConflict: 'client_id,book_id' })
+      } else {
+        await supabase.from('client_ledgers').delete().eq('client_id', clientId).eq('book_id', b.id)
+      }
+    }
+
+    toast.success(editId ? 'Client updated' : 'Client added'); reset(); load()
     setSaving(false)
   }
 
@@ -92,6 +124,30 @@ export default function Clients() {
             <input className="input" value={form.phone} onChange={e => set('phone', e.target.value)} />
           </div>
         </div>
+
+        {/* Per-firm ledger to debit on this client's invoices */}
+        {books.length > 0 && (
+          <div className="border-t border-gray-100 pt-3 space-y-2">
+            <div className="font-semibold text-sm">Ledger account to debit (per firm)</div>
+            <p className="text-xs text-gray-400 -mt-1">Invoices raised to this client will debit the account chosen here for the billing firm.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {books.map(b => {
+                const bookAccounts = accounts.filter(a => a.book_id === b.id)
+                return (
+                  <div key={b.id}>
+                    <label className="label">{b.name}</label>
+                    <select className="input" value={ledgers[b.id] || ''}
+                      onChange={e => setLedgers(l => ({ ...l, [b.id]: e.target.value }))}>
+                      <option value="">— none —</option>
+                      {bookAccounts.map(a => <option key={a.id} value={a.id}>{a.name} · {a.type}</option>)}
+                    </select>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-2">
           <button type="submit" disabled={saving} className="btn-primary">{saving ? 'Saving…' : editId ? 'Update' : 'Add client'}</button>
           {editId && <button type="button" onClick={reset} className="btn-secondary">Cancel</button>}
@@ -105,26 +161,33 @@ export default function Clients() {
               <th className="table-head">Name</th>
               <th className="table-head">GSTIN</th>
               <th className="table-head">State</th>
+              <th className="table-head">Ledger(s)</th>
               <th className="table-head w-24"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {clients.length === 0 && (
-              <tr><td colSpan={4} className="table-cell text-center text-gray-400 py-8">No clients yet</td></tr>
+              <tr><td colSpan={5} className="table-cell text-center text-gray-400 py-8">No clients yet</td></tr>
             )}
-            {clients.map(c => (
-              <tr key={c.id} className="hover:bg-gray-50">
-                <td className="table-cell font-medium">{c.name}
-                  {!c.gstin && <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">B2C</span>}
-                </td>
-                <td className="table-cell font-mono text-xs">{c.gstin || '—'}</td>
-                <td className="table-cell text-xs text-gray-500">{c.state_code || '—'}</td>
-                <td className="table-cell text-right space-x-2">
-                  <button onClick={() => startEdit(c)} className="text-brand-600 hover:underline text-xs">Edit</button>
-                  <button onClick={() => del(c.id)} className="text-red-400 hover:text-red-600 text-xs">Delete</button>
-                </td>
-              </tr>
-            ))}
+            {clients.map(c => {
+              const mapped = ledgerMap[c.id] || {}
+              const names = Object.entries(mapped).map(([bid, aid]) =>
+                accounts.find(a => a.id === aid)?.name).filter(Boolean)
+              return (
+                <tr key={c.id} className="hover:bg-gray-50">
+                  <td className="table-cell font-medium">{c.name}
+                    {!c.gstin && <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">B2C</span>}
+                  </td>
+                  <td className="table-cell font-mono text-xs">{c.gstin || '—'}</td>
+                  <td className="table-cell text-xs text-gray-500">{c.state_code || '—'}</td>
+                  <td className="table-cell text-xs text-gray-500">{names.length ? names.join(', ') : <span className="text-amber-500">not set</span>}</td>
+                  <td className="table-cell text-right space-x-2">
+                    <button onClick={() => startEdit(c)} className="text-brand-600 hover:underline text-xs">Edit</button>
+                    <button onClick={() => del(c.id)} className="text-red-400 hover:text-red-600 text-xs">Delete</button>
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>

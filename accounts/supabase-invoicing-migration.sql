@@ -47,6 +47,19 @@ create table if not exists clients (
   created_at timestamptz default now()
 );
 
+-- CLIENT LEDGER MAP — the party ledger to debit, per client PER FIRM (accounts are
+-- per-book, clients are global, so the mapping is keyed by both).
+create table if not exists client_ledgers (
+  client_id  uuid not null references clients(id)  on delete cascade,
+  book_id    uuid not null references books(id)    on delete cascade,
+  account_id uuid not null references accounts(id) on delete cascade,
+  primary key (client_id, book_id)
+);
+alter table client_ledgers enable row level security;
+do $$ begin
+  create policy "allow_auth_client_ledgers" on client_ledgers for all to authenticated using (true) with check (true);
+exception when duplicate_object then null; end $$;
+
 -- WORK ORDERS
 create table if not exists work_orders (
   id           uuid primary key default gen_random_uuid(),
