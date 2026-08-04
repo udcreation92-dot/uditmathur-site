@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
-import { inr, ddmmyyyy } from '../lib/gst'
+import { inr, ddmmyyyy, finYear } from '../lib/gst'
 
 const STATUS_BADGE = {
   proforma: 'bg-amber-100 text-amber-700',
@@ -18,6 +18,7 @@ export default function Invoices() {
   const [books,   setBooks]   = useState([])
   const [filter,  setFilter]  = useState('')
   const [loading, setLoading] = useState(true)
+  const [busy,    setBusy]    = useState(false)
 
   async function load() {
     const [{ data: inv }, { data: bk }] = await Promise.all([
@@ -63,6 +64,55 @@ export default function Invoices() {
     if (error) toast.error(error.message); else { toast.success(paid ? 'Marked paid' : 'Marked unpaid'); load() }
   }
 
+  // Re-sequence Tax/Paid invoice numbers by date within each firm + financial year.
+  // Fixes numbers assigned out of date-order (e.g. later bills entered first).
+  async function renumberByDate() {
+    if (!confirm('Renumber all Tax/Paid invoices sequentially by date, within each firm & financial year?\n\nThis rewrites invoice numbers and updates their linked journal entries. Proformas are untouched.')) return
+    setBusy(true)
+    try {
+      const { data: firms } = await supabase.from('firm_profiles').select('book_id, invoice_prefix')
+      const prefixOf = {}; (firms || []).forEach(f => { prefixOf[f.book_id] = f.invoice_prefix || 'INV' })
+
+      const { data: inv } = await supabase.from('invoices')
+        .select('id, book_id, fin_year, invoice_no, seq_no, invoice_date, created_at, journal_entry_id')
+        .not('invoice_no', 'is', null)
+        .order('invoice_date', { ascending: true }).order('created_at', { ascending: true })
+
+      // Group by firm + FY, then assign 0001.. in date order
+      const groups = {}
+      for (const r of (inv || [])) {
+        const fy = r.fin_year || finYear(r.invoice_date)
+        ;(groups[`${r.book_id}|${fy}`] ||= []).push(r)
+      }
+      const updates = []
+      for (const key of Object.keys(groups)) {
+        const [book_id, fy] = key.split('|')
+        const prefix = prefixOf[book_id] || 'INV'
+        groups[key].forEach((r, i) => {
+          const seq = i + 1
+          const newNo = `${prefix}/${fy}/${String(seq).padStart(4, '0')}`
+          if (newNo !== r.invoice_no || r.seq_no !== seq || r.fin_year !== fy)
+            updates.push({ id: r.id, oldNo: r.invoice_no, newNo, seq, fy, je: r.journal_entry_id })
+        })
+      }
+      if (!updates.length) { toast.success('Already in order — nothing to change'); setBusy(false); return }
+
+      // Phase 1: park every number at a unique temp value (dodge the unique constraint)
+      for (const u of updates) await supabase.from('invoices').update({ invoice_no: `TMP-${u.id}` }).eq('id', u.id)
+      // Phase 2: write final numbers + fix linked journal entries
+      for (const u of updates) {
+        await supabase.from('invoices').update({ invoice_no: u.newNo, seq_no: u.seq, fin_year: u.fy }).eq('id', u.id)
+        if (u.je && u.oldNo && u.oldNo !== u.newNo) {
+          const { data: je } = await supabase.from('journal_entries').select('narration').eq('id', u.je).maybeSingle()
+          const narration = je?.narration ? je.narration.split(u.oldNo).join(u.newNo) : je?.narration
+          await supabase.from('journal_entries').update({ reference_no: u.newNo, narration }).eq('id', u.je)
+        }
+      }
+      toast.success(`Renumbered ${updates.length} invoice(s) by date`)
+      load()
+    } catch (e) { toast.error(e.message) } finally { setBusy(false) }
+  }
+
   const filtered = filter ? rows.filter(r => r.book_id === filter) : rows
   if (loading) return <Spinner />
 
@@ -77,6 +127,9 @@ export default function Invoices() {
               {books.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           )}
+          <button onClick={renumberByDate} disabled={busy} className="btn-secondary text-sm disabled:opacity-40" title="Re-sequence Tax/Paid invoice numbers by date within each firm & FY">
+            {busy ? 'Renumbering…' : '↕ Renumber by date'}
+          </button>
           <button onClick={() => navigate('/invoices/new')} className="btn-primary text-sm">+ New Invoice</button>
         </div>
       </div>
