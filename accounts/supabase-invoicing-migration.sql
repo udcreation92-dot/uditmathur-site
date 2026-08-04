@@ -139,6 +139,12 @@ create table if not exists work_order_stages (
   created_at    timestamptz default now()
 );
 
+-- Stages billed BEFORE this system existed (prior-year) — marked done without an
+-- invoice/journal entry, so only the remaining stages get billed going forward.
+alter table work_order_stages add column if not exists billed_external boolean not null default false;
+alter table work_order_stages add column if not exists billed_ref  text;
+alter table work_order_stages add column if not exists billed_date date;
+
 -- INVOICE LINE ITEMS
 create table if not exists invoice_items (
   id            uuid primary key default gen_random_uuid(),

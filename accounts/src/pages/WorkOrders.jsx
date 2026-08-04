@@ -6,7 +6,7 @@ import { inr, stageAmount, round2 } from '../lib/gst'
 import { uploadToDrive, isDriveConnected, requestDriveAccess } from '../lib/drive'
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2)
-const emptyStage = () => ({ _id: uid(), dbId: null, label: '', basis: 'percent', value: '', invoice_id: null })
+const emptyStage = () => ({ _id: uid(), dbId: null, label: '', basis: 'percent', value: '', invoice_id: null, billed_external: false, billed_ref: '', billed_date: '' })
 const emptyForm = () => ({
   book_id: '', client_id: '', wo_number: '', wo_date: '', po_no: '',
   project_site: '', description: '', amount: '', status: 'open',
@@ -76,7 +76,7 @@ export default function WorkOrders() {
       project_site: wo.project_site || '', description: wo.description || '',
       amount: wo.amount ?? '', status: wo.status,
       stages: stages.length
-        ? stages.map(s => ({ _id: uid(), dbId: s.id, label: s.label || '', basis: s.basis, value: s.value ?? '', invoice_id: s.invoice_id }))
+        ? stages.map(s => ({ _id: uid(), dbId: s.id, label: s.label || '', basis: s.basis, value: s.value ?? '', invoice_id: s.invoice_id, billed_external: !!s.billed_external, billed_ref: s.billed_ref || '', billed_date: s.billed_date || '' }))
         : [emptyStage()],
       pendingFiles: [],
       files: wo.work_order_files || [],
@@ -117,6 +117,9 @@ export default function WorkOrders() {
         stages.map((s, i) => ({
           work_order_id: woId, seq: (s.invoice_id ? 0 : 100) + i,
           label: s.label.trim() || `Stage ${i + 1}`, basis: s.basis, value: round2(s.value),
+          billed_external: !!s.billed_external,
+          billed_ref: s.billed_external ? (s.billed_ref?.trim() || null) : null,
+          billed_date: s.billed_external ? (s.billed_date || null) : null,
         }))
       )
       if (se) toast.error(se.message)
@@ -219,19 +222,36 @@ export default function WorkOrders() {
             </div>
             <div className="space-y-2">
               {form.stages.map((s, i) => {
-                const billed = !!s.invoice_id
+                const billed = !!s.invoice_id          // billed in-system → fully locked
+                const prior  = !!s.billed_external     // billed before this system → marked done, editable
                 return (
-                <div key={s._id} className="grid grid-cols-[1fr_5rem_6rem_6rem_1.5rem] gap-2 items-center">
-                  <input className="input" placeholder={`Stage ${i + 1} label (e.g. On mobilization)`} value={s.label} disabled={billed} onChange={e => setStage(s._id, 'label', e.target.value)} />
-                  <select className="input" value={s.basis} disabled={billed} onChange={e => setStage(s._id, 'basis', e.target.value)}>
-                    <option value="percent">%</option>
-                    <option value="amount">₹</option>
-                  </select>
-                  <input className="input text-right" type="number" min="0" step="0.01" placeholder={s.basis === 'percent' ? '%' : '₹'} value={s.value} disabled={billed} onChange={e => setStage(s._id, 'value', e.target.value)} />
-                  <span className="text-xs text-gray-500 text-right">₹{inr(stageAmount(s, woAmount))}</span>
-                  {billed
-                    ? <span className="text-[10px] px-1 py-0.5 rounded bg-green-100 text-green-700 text-center" title="Already billed — locked">🔒</span>
-                    : <button type="button" onClick={() => removeStage(s._id)} className="text-gray-300 hover:text-red-500">✕</button>}
+                <div key={s._id} className="space-y-1">
+                  <div className="grid grid-cols-[1fr_5rem_6rem_6rem_1.5rem] gap-2 items-center">
+                    <input className="input" placeholder={`Stage ${i + 1} label (e.g. On mobilization)`} value={s.label} disabled={billed} onChange={e => setStage(s._id, 'label', e.target.value)} />
+                    <select className="input" value={s.basis} disabled={billed} onChange={e => setStage(s._id, 'basis', e.target.value)}>
+                      <option value="percent">%</option>
+                      <option value="amount">₹</option>
+                    </select>
+                    <input className="input text-right" type="number" min="0" step="0.01" placeholder={s.basis === 'percent' ? '%' : '₹'} value={s.value} disabled={billed} onChange={e => setStage(s._id, 'value', e.target.value)} />
+                    <span className="text-xs text-gray-500 text-right">₹{inr(stageAmount(s, woAmount))}</span>
+                    {billed
+                      ? <span className="text-[10px] px-1 py-0.5 rounded bg-green-100 text-green-700 text-center" title="Billed in-system — locked">🔒</span>
+                      : <button type="button" onClick={() => removeStage(s._id)} className="text-gray-300 hover:text-red-500">✕</button>}
+                  </div>
+                  {!billed && (
+                    <div className="flex items-center gap-2 flex-wrap pl-1">
+                      <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                        <input type="checkbox" checked={prior} onChange={e => setStage(s._id, 'billed_external', e.target.checked)} />
+                        Already billed (prior year)
+                      </label>
+                      {prior && <>
+                        <input className="input py-1 text-xs w-40" placeholder="Old invoice / ref"
+                          value={s.billed_ref} onChange={e => setStage(s._id, 'billed_ref', e.target.value)} />
+                        <input className="input py-1 text-xs w-36" type="date"
+                          value={s.billed_date} onChange={e => setStage(s._id, 'billed_date', e.target.value)} />
+                      </>}
+                    </div>
+                  )}
                 </div>
                 )
               })}
@@ -279,6 +299,8 @@ export default function WorkOrders() {
         {wos.length === 0 && <p className="text-gray-400 text-sm">No work orders yet.</p>}
         {wos.map(wo => {
           const stages = (wo.work_order_stages || []).sort((a, b) => a.seq - b.seq)
+          const billedAmt = stages.reduce((s, st) => s + ((st.invoice_id || st.billed_external) ? stageAmount(st, wo.amount) : 0), 0)
+          const outstanding = round2(round2(wo.amount) - billedAmt)
           return (
             <div key={wo.id} className="card p-4 space-y-3">
               <div className="flex items-start justify-between gap-3">
@@ -288,6 +310,7 @@ export default function WorkOrders() {
                 </div>
                 <div className="text-right">
                   <div className="font-bold">₹{inr(wo.amount)}</div>
+                  <div className="text-xs text-gray-500">Billed ₹{inr(billedAmt)} · <span className={outstanding > 0.5 ? 'text-amber-600' : 'text-green-600'}>Outstanding ₹{inr(outstanding)}</span></div>
                   <div className="space-x-2">
                     <button onClick={() => startEdit(wo)} className="text-xs text-brand-600 hover:underline">Edit</button>
                     <button onClick={() => del(wo.id)} className="text-xs text-red-400 hover:text-red-600">Delete</button>
@@ -309,15 +332,20 @@ export default function WorkOrders() {
                   <tbody className="divide-y divide-gray-100">
                     {stages.map(s => {
                       const billed = !!s.invoice_id
+                      const prior  = !!s.billed_external
                       return (
                         <tr key={s.id}>
-                          <td className="py-1.5">{s.label}</td>
+                          <td className="py-1.5">{s.label}
+                            {prior && s.billed_ref && <span className="ml-2 text-xs text-gray-400">({s.billed_ref})</span>}
+                          </td>
                           <td className="py-1.5 text-gray-500 text-xs">{s.basis === 'percent' ? `${s.value}%` : '₹ fixed'}</td>
                           <td className="py-1.5 text-right">₹{inr(stageAmount(s, wo.amount))}</td>
                           <td className="py-1.5 text-right w-28">
                             {billed
                               ? <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700">Billed</span>
-                              : <button onClick={() => billStage(wo, s)} className="text-xs btn-secondary py-1 px-2">Bill stage →</button>}
+                              : prior
+                                ? <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-500" title="Billed in a prior year, outside this system">Billed (prior)</span>
+                                : <button onClick={() => billStage(wo, s)} className="text-xs btn-secondary py-1 px-2">Bill stage →</button>}
                           </td>
                         </tr>
                       )
