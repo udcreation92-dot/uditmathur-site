@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import * as XLSX from 'xlsx'
 import { supabase } from '../lib/supabase'
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
 import { useEntryModal, useEntryRefresh } from '../context/EntryModal'
+import LedgerStatement from '../components/LedgerStatement'
 
 export default function Ledger() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -12,6 +14,8 @@ export default function Ledger() {
   const [accounts, setAccounts] = useState([])
   const [entries,  setEntries]  = useState([])
   const [loading,  setLoading]  = useState(false)
+  const [firm,     setFirm]     = useState(null)   // firm_profiles for the selected book (letterhead)
+  const [opening,  setOpening]  = useState(0)       // opening balance for a selected account before 'from'
 
   const selBook = searchParams.get('book') || ''
   const selAcc  = searchParams.get('account') || ''
@@ -37,6 +41,39 @@ export default function Ledger() {
 
   // Refresh the list whenever an entry is saved via the modal.
   useEntryRefresh(loadEntries)
+
+  // Firm letterhead for the statement (optional — only if the book has a profile)
+  useEffect(() => {
+    if (!selBook) { setFirm(null); return }
+    supabase.from('firm_profiles').select('*').eq('book_id', selBook).maybeSingle()
+      .then(({ data }) => setFirm(data || null))
+  }, [selBook])
+
+  // Opening balance = net of the selected account's lines dated before 'from'
+  useEffect(() => {
+    if (!selAcc || !fromD) { setOpening(0); return }
+    let cancelled = false
+    ;(async () => {
+      const PAGE = 1000
+      let offset = 0, dr = 0, cr = 0
+      for (;;) {
+        let q = supabase.from('journal_lines')
+          .select('debit, credit, journal_entries!inner(book_id, date)')
+          .eq('account_id', selAcc)
+          .lt('journal_entries.date', fromD)
+          .order('id', { ascending: true })
+          .range(offset, offset + PAGE - 1)
+        if (selBook) q = q.eq('journal_entries.book_id', selBook)
+        const { data, error } = await q
+        if (error || !data) break
+        for (const l of data) { dr += l.debit || 0; cr += l.credit || 0 }
+        if (data.length < PAGE) break
+        offset += PAGE
+      }
+      if (!cancelled) setOpening(dr - cr)
+    })()
+    return () => { cancelled = true }
+  }, [selAcc, fromD, selBook])
 
   async function loadEntries() {
     setLoading(true)
@@ -70,26 +107,83 @@ export default function Ledger() {
   }
 
   const bookAccounts = accounts.filter(a => !selBook || a.book_id === selBook)
+  const account  = accounts.find(a => a.id === selAcc)
+  const bookName = books.find(b => b.id === selBook)?.name || ''
 
-  // Running balance for selected account
-  let runningBal = 0
-  const rows = entries.flatMap(e => {
+  // Flatten to chronological rows and carry a running balance (from the opening).
+  const baseRows = entries.flatMap(e => {
     const lines = selAcc
       ? e.journal_lines.filter(l => l.account_id === selAcc)
       : e.journal_lines
     return lines.map(l => {
-      const contraLines = selAcc
-        ? e.journal_lines.filter(cl => cl.account_id !== selAcc)
-        : []
+      const contraLines = selAcc ? e.journal_lines.filter(cl => cl.account_id !== selAcc) : []
       return { entry: e, line: l, contraLines }
     })
   }).reverse()
 
+  let bal = opening
+  const rows = baseRows.map(r => {
+    const dr = r.line.debit || 0, cr = r.line.credit || 0
+    bal += dr - cr
+    const particulars = selAcc
+      ? (r.contraLines.map(l => l.accounts?.name).filter(Boolean).join(', ') || '—')
+      : r.line.accounts?.name
+    return { ...r, dr, cr, balance: bal, particulars }
+  })
+  const closing = rows.length ? rows[rows.length - 1].balance : opening
+  const totalDr = rows.reduce((s, r) => s + r.dr, 0)
+  const totalCr = rows.reduce((s, r) => s + r.cr, 0)
+
+  function fileBase() {
+    const parts = ['Ledger', account?.name || 'All-accounts']
+    if (fromD || toD) parts.push(`${fromD || 'start'}_to_${toD || 'end'}`)
+    return parts.join('_').replace(/[^\w-]+/g, '-')
+  }
+
+  function exportExcel() {
+    if (!rows.length) return toast.error('Nothing to export')
+    const data = []
+    if (selAcc) data.push({ Date: '', Particulars: 'Opening balance', Narration: '', Ref: '', Debit: '', Credit: '', Balance: opening })
+    for (const r of rows) {
+      data.push({
+        Date: format(new Date(r.entry.date), 'dd/MM/yyyy'),
+        Particulars: r.particulars,
+        Narration: r.entry.narration || '',
+        Ref: r.entry.reference_no || '',
+        Debit: r.dr || '', Credit: r.cr || '',
+        ...(selAcc ? { Balance: r.balance } : {}),
+      })
+    }
+    if (selAcc) data.push({ Date: '', Particulars: 'Closing balance', Narration: '', Ref: '', Debit: totalDr, Credit: totalCr, Balance: closing })
+    const ws = XLSX.utils.json_to_sheet(data)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Ledger')
+    XLSX.writeFile(wb, `${fileBase()}.xlsx`)
+  }
+
+  function exportPDF() {
+    if (!rows.length) return toast.error('Nothing to export')
+    document.body.classList.add('printing-ledger')
+    const cleanup = () => { document.body.classList.remove('printing-ledger'); window.removeEventListener('afterprint', cleanup) }
+    window.addEventListener('afterprint', cleanup)
+    setTimeout(() => window.print(), 60)
+  }
+
+  const stmtRows = rows.map(r => ({
+    date: r.entry.date, narration: r.entry.narration, ref: r.entry.reference_no,
+    particulars: r.particulars, dr: r.dr, cr: r.cr, balance: r.balance,
+  }))
+
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
+    <>
+    <div className="space-y-5 ledger-screen">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold">Ledger</h1>
-        <button onClick={() => openEntry({})} className="btn-primary">+ New Entry</button>
+        <div className="flex items-center gap-2">
+          <button onClick={exportExcel} disabled={!rows.length} className="btn-secondary text-sm disabled:opacity-40">⬇ Excel</button>
+          <button onClick={exportPDF} disabled={!rows.length} className="btn-secondary text-sm disabled:opacity-40">📄 PDF</button>
+          <button onClick={() => openEntry({})} className="btn-primary">+ New Entry</button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -145,10 +239,7 @@ export default function Ledger() {
                   {selBook || selAcc ? 'No entries found' : 'Select a book or account to view entries'}
                 </td></tr>
               )}
-              {rows.map(({ entry, line, contraLines }, i) => {
-                const dr = line.debit || 0
-                const cr = line.credit || 0
-                runningBal += dr - cr
+              {rows.map(({ entry, line, dr, cr, balance, particulars }, i) => {
                 const isFirstLine = i === 0 || rows[i - 1].entry.id !== entry.id
                 return (
                   <tr key={`${entry.id}-${line.id}`} className="hover:bg-gray-50">
@@ -157,16 +248,12 @@ export default function Ledger() {
                     </td>
                     <td className="table-cell text-sm">{isFirstLine ? entry.narration : ''}</td>
                     <td className="table-cell text-xs text-gray-400">{isFirstLine ? entry.reference_no : ''}</td>
-                    <td className="table-cell text-sm">
-                      {selAcc && contraLines.length > 0
-                        ? contraLines.map(l => l.accounts?.name).filter(Boolean).join(', ')
-                        : line.accounts?.name}
-                    </td>
+                    <td className="table-cell text-sm">{particulars}</td>
                     <td className="table-cell text-right text-sm">{dr > 0 ? `₹${dr.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : ''}</td>
                     <td className="table-cell text-right text-sm">{cr > 0 ? `₹${cr.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : ''}</td>
                     {selAcc && (
-                      <td className={`table-cell text-right text-sm font-medium ${runningBal >= 0 ? 'text-gray-800' : 'text-red-600'}`}>
-                        ₹{Math.abs(runningBal).toLocaleString('en-IN', { minimumFractionDigits: 2 })} {runningBal >= 0 ? 'Dr' : 'Cr'}
+                      <td className={`table-cell text-right text-sm font-medium ${balance >= 0 ? 'text-gray-800' : 'text-red-600'}`}>
+                        ₹{Math.abs(balance).toLocaleString('en-IN', { minimumFractionDigits: 2 })} {balance >= 0 ? 'Dr' : 'Cr'}
                       </td>
                     )}
                     {isFirstLine ? (
@@ -185,5 +272,22 @@ export default function Ledger() {
         </div>
       )}
     </div>
+
+    {/* Print-only "Statement of Account" (hidden on screen) */}
+    <div className="ledger-print-only">
+      <LedgerStatement
+        firm={firm || {}}
+        bookName={bookName}
+        accountName={account?.name || ''}
+        accountType={account?.type || ''}
+        from={fromD} to={toD}
+        opening={opening}
+        rows={stmtRows}
+        closing={closing}
+        totalDr={totalDr}
+        totalCr={totalCr}
+      />
+    </div>
+    </>
   )
 }

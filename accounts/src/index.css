@@ -35,6 +35,19 @@
   .invoice-page { box-shadow: none !important; page-break-after: always; }
 }
 
+/* Ledger statement: only rendered when printing */
+.ledger-print-only { display: none; }
+@media print {
+  body.printing-ledger aside,
+  body.printing-ledger header,
+  body.printing-ledger .ledger-screen { display: none !important; }
+  body.printing-ledger .ledger-print-only { display: block !important; }
+  /* The ledger prints from inside the app shell — undo the layout's fixed
+     height / overflow so the statement can flow across pages. */
+  body.printing-ledger .flex.h-screen { display: block !important; height: auto !important; overflow: visible !important; }
+  body.printing-ledger main { padding: 0 !important; overflow: visible !important; }
+}
+
 @layer components {
   .btn {
     @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed;
