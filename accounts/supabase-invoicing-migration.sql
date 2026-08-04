@@ -75,6 +75,22 @@ create table if not exists work_orders (
   created_at   timestamptz default now()
 );
 
+-- WORK ORDER FILES — Google-Drive-hosted copies of the original WO (PDF/scan)
+create table if not exists work_order_files (
+  id            uuid primary key default gen_random_uuid(),
+  work_order_id uuid not null references work_orders(id) on delete cascade,
+  drive_file_id text not null,
+  file_name     text not null,
+  mime_type     text,
+  web_view_link text,
+  created_at    timestamptz default now()
+);
+create index if not exists idx_wo_files_wo on work_order_files(work_order_id);
+alter table work_order_files enable row level security;
+do $$ begin
+  create policy "allow_auth_work_order_files" on work_order_files for all to authenticated using (true) with check (true);
+exception when duplicate_object then null; end $$;
+
 -- INVOICES (proforma -> tax lifecycle)
 create table if not exists invoices (
   id                 uuid primary key default gen_random_uuid(),

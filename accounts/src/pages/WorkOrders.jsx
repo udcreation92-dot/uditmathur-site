@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { inr, stageAmount, round2 } from '../lib/gst'
+import { uploadToDrive, isDriveConnected, requestDriveAccess } from '../lib/drive'
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2)
 const emptyStage = () => ({ _id: uid(), dbId: null, label: '', basis: 'percent', value: '', invoice_id: null })
@@ -10,6 +11,8 @@ const emptyForm = () => ({
   book_id: '', client_id: '', wo_number: '', wo_date: '', po_no: '',
   project_site: '', description: '', amount: '', status: 'open',
   stages: [emptyStage()],
+  pendingFiles: [],   // File[] awaiting upload
+  files: [],          // existing work_order_files rows (edit mode)
 })
 
 export default function WorkOrders() {
@@ -22,12 +25,14 @@ export default function WorkOrders() {
   const [editId,  setEditId]  = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving,  setSaving]  = useState(false)
+  const [driveReady, setDriveReady] = useState(isDriveConnected())
+  const fileRef = useRef()
 
   async function load() {
     const [{ data: bk }, { data: cl }, { data: wo }] = await Promise.all([
       supabase.from('books').select('id, name, invoicing_enabled').eq('invoicing_enabled', true).order('name'),
       supabase.from('clients').select('id, name').order('name'),
-      supabase.from('work_orders').select('*, clients(name), books(name), work_order_stages(*), invoices(id, status)').order('created_at', { ascending: false }),
+      supabase.from('work_orders').select('*, clients(name), books(name), work_order_stages(*), work_order_files(*), invoices(id, status)').order('created_at', { ascending: false }),
     ])
     setBooks(bk || [])
     setClients(cl || [])
@@ -40,6 +45,22 @@ export default function WorkOrders() {
   function setStage(id, k, v) { setForm(f => ({ ...f, stages: f.stages.map(s => s._id === id ? { ...s, [k]: v } : s) })) }
   function addStage() { setForm(f => ({ ...f, stages: [...f.stages, emptyStage()] })) }
   function removeStage(id) { setForm(f => ({ ...f, stages: f.stages.filter(s => s._id !== id) })) }
+
+  function pickFiles(e) {
+    const files = Array.from(e.target.files || [])
+    setForm(f => ({ ...f, pendingFiles: [...f.pendingFiles, ...files] }))
+    e.target.value = ''
+  }
+  function removePending(i) { setForm(f => ({ ...f, pendingFiles: f.pendingFiles.filter((_, j) => j !== i) })) }
+  async function removeFile(file) {
+    await supabase.from('work_order_files').delete().eq('id', file.id)
+    setForm(f => ({ ...f, files: f.files.filter(x => x.id !== file.id) }))
+    toast.success('File removed')
+  }
+  async function connectDrive() {
+    try { await requestDriveAccess(); setDriveReady(true); toast.success('Google Drive connected') }
+    catch (e) { toast.error(e.message) }
+  }
 
   const woAmount = round2(form.amount)
   const stagesTotal = form.stages.reduce((s, st) => s + stageAmount(st, woAmount), 0)
@@ -57,6 +78,8 @@ export default function WorkOrders() {
       stages: stages.length
         ? stages.map(s => ({ _id: uid(), dbId: s.id, label: s.label || '', basis: s.basis, value: s.value ?? '', invoice_id: s.invoice_id }))
         : [emptyStage()],
+      pendingFiles: [],
+      files: wo.work_order_files || [],
     })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -98,6 +121,19 @@ export default function WorkOrders() {
       )
       if (se) toast.error(se.message)
     }
+
+    // Upload any pending WO document(s) to Drive and record them
+    for (const file of form.pendingFiles) {
+      if (!driveReady) { toast.error('Connect Google Drive to upload the WO document'); break }
+      try {
+        const d = await uploadToDrive(file)
+        await supabase.from('work_order_files').insert({
+          work_order_id: woId, drive_file_id: d.id, file_name: d.name,
+          mime_type: d.mimeType, web_view_link: d.webViewLink,
+        })
+      } catch { toast.error(`Drive upload failed: ${file.name}`) }
+    }
+
     toast.success(editId ? 'Work order updated' : 'Work order created')
     cancelForm(); load(); setSaving(false)
   }
@@ -204,6 +240,33 @@ export default function WorkOrders() {
             {form.stages.some(s => s.invoice_id) && <p className="text-xs text-gray-400 mt-1">🔒 Billed stages are locked — they're linked to an invoice.</p>}
           </div>
 
+          {/* Original WO document(s) */}
+          <div className="border-t border-gray-100 pt-3 space-y-2">
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="font-semibold text-sm">Original work order (PDF/scan)</span>
+              {driveReady
+                ? <span className="text-xs text-green-600">✓ Drive ready</span>
+                : <button type="button" onClick={connectDrive} className="text-xs text-brand-600 hover:underline">Connect Google Drive</button>}
+            </div>
+            {form.files.map(f => (
+              <div key={f.id} className="flex items-center gap-2 text-sm bg-gray-50 rounded-lg px-3 py-2">
+                <span>{f.mime_type?.startsWith('image/') ? '🖼' : '📄'}</span>
+                <a href={f.web_view_link} target="_blank" rel="noreferrer" className="text-brand-600 hover:underline truncate flex-1 text-xs">{f.file_name}</a>
+                <button type="button" onClick={() => removeFile(f)} className="text-red-400 hover:text-red-600 text-xs shrink-0">Remove</button>
+              </div>
+            ))}
+            {form.pendingFiles.map((f, i) => (
+              <div key={i} className="flex items-center gap-2 text-sm bg-amber-50 rounded-lg px-3 py-2">
+                <span>{f.type?.startsWith('image/') ? '🖼' : '📄'}</span>
+                <span className="flex-1 truncate text-xs text-gray-600">{f.name} <em className="text-gray-400">(pending upload)</em></span>
+                <button type="button" onClick={() => removePending(i)} className="text-red-400 hover:text-red-600 text-xs shrink-0">✕</button>
+              </div>
+            ))}
+            <input ref={fileRef} type="file" accept="application/pdf,image/*" className="hidden" onChange={pickFiles} />
+            <button type="button" onClick={() => fileRef.current.click()} className="btn-secondary text-xs py-1.5 px-3">📎 Attach WO document</button>
+            {!driveReady && form.pendingFiles.length > 0 && <span className="text-xs text-amber-600 ml-2">⚠ Connect Drive above to upload</span>}
+          </div>
+
           <div className="flex gap-2">
             <button type="submit" disabled={saving} className="btn-primary">{saving ? 'Saving…' : editId ? 'Update Work Order' : 'Create Work Order'}</button>
             <button type="button" onClick={cancelForm} className="btn-secondary">Cancel</button>
@@ -231,6 +294,16 @@ export default function WorkOrders() {
                   </div>
                 </div>
               </div>
+              {(wo.work_order_files || []).length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {wo.work_order_files.map(f => (
+                    <a key={f.id} href={f.web_view_link} target="_blank" rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1 text-brand-600 hover:underline">
+                      {f.mime_type?.startsWith('image/') ? '🖼' : '📄'} {f.file_name}
+                    </a>
+                  ))}
+                </div>
+              )}
               {stages.length > 0 && (
                 <table className="w-full text-sm">
                   <tbody className="divide-y divide-gray-100">
