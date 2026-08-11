@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { format, addDays, parseISO } from 'date-fns'
+import { syncCreditCardCommitments } from '../lib/creditCardSync'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -147,6 +148,8 @@ export default function Commitments() {
 
   async function load() {
     setLoading(true)
+    // Refresh auto credit-card bill commitments from live card balances first.
+    try { await syncCreditCardCommitments() } catch { /* non-fatal */ }
     const [{ data: bk }, { data: ac }, { data: cm }] = await Promise.all([
       supabase.from('books').select('id, name').order('name'),
       supabase.from('accounts').select('id, name, book_id').order('name'),
@@ -487,7 +490,14 @@ export default function Commitments() {
               const isOverdue = nextDue && nextDue < new Date()
               return (
                 <tr key={c.id} className={`hover:bg-gray-50 ${!c.is_active ? 'opacity-50' : ''}`}>
-                  <td className="table-cell font-medium text-sm">{c.description}</td>
+                  <td className="table-cell font-medium text-sm">
+                    {c.description}
+                    {c.is_auto && (
+                      <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-semibold align-middle">
+                        AUTO
+                      </span>
+                    )}
+                  </td>
                   <td className="table-cell text-sm">
                     <span className="text-gray-700">{c.accounts?.name}</span>
                     <br />
@@ -522,9 +532,15 @@ export default function Commitments() {
                     </button>
                   </td>
                   <td className="table-cell">
-                    <button onClick={() => del(c.id)} className="text-red-400 hover:text-red-600 text-xs">
-                      Del
-                    </button>
+                    {c.is_auto ? (
+                      <span className="text-gray-300 text-xs" title="Managed automatically from the credit-card settings. Clear the card's due day to remove it.">
+                        Auto
+                      </span>
+                    ) : (
+                      <button onClick={() => del(c.id)} className="text-red-400 hover:text-red-600 text-xs">
+                        Del
+                      </button>
+                    )}
                   </td>
                 </tr>
               )

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { format, addDays, parseISO } from 'date-fns'
+import { syncCreditCardCommitments } from '../lib/creditCardSync'
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -100,6 +101,8 @@ export default function FundOptimizer() {
 
   async function loadAll() {
     setLoading(true)
+    // Refresh auto credit-card bill commitments from live card balances first.
+    try { await syncCreditCardCommitments() } catch { /* non-fatal */ }
     const today = format(new Date(), 'yyyy-MM-dd')
     const now   = new Date()
     const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`

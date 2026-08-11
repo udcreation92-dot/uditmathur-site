@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import { syncCreditCardCommitments } from '../lib/creditCardSync'
 
 const TYPES = ['asset', 'liability', 'equity', 'income', 'expense']
 const ROLES = ['other', 'savings', 'current', 'credit_card', 'trading', 'investment']
@@ -28,7 +29,7 @@ export default function ChartOfAccounts() {
   const [editId,       setEditId]       = useState(null)
   const [editAccId,    setEditAccId]    = useState(null)
   const [editAccForm,  setEditAccForm]  = useState({ name: '', code: '', type: 'asset' })
-  const [settingsForm, setSettingsForm] = useState({ role: 'other', rate: '', minBalance: '', ccReserve: '' })
+  const [settingsForm, setSettingsForm] = useState({ role: 'other', rate: '', minBalance: '', ccReserve: '', ccStatementDay: '', ccDueDay: '' })
   const [loading,      setLoading]      = useState(true)
 
   async function load() {
@@ -112,25 +113,38 @@ export default function ChartOfAccounts() {
       rate:       s?.interest_rate_pa  != null ? String(s.interest_rate_pa)  : '',
       minBalance: s?.min_balance       != null ? String(s.min_balance)       : '',
       ccReserve:  s?.cc_reserve_amount != null ? String(s.cc_reserve_amount) : '',
+      ccStatementDay: s?.cc_statement_day != null ? String(s.cc_statement_day) : '',
+      ccDueDay:       s?.cc_due_day       != null ? String(s.cc_due_day)       : '',
     })
     setEditId(editId === a.id ? null : a.id)
     setEditAccId(null)
   }
 
   async function saveSettings(accountId) {
+    const isCC = settingsForm.role === 'credit_card'
     const payload = {
       account_id:        accountId,
       account_role:      settingsForm.role,
       interest_rate_pa:  parseFloat(settingsForm.rate)       || 0,
       min_balance:       parseFloat(settingsForm.minBalance) || 0,
       cc_reserve_amount: parseFloat(settingsForm.ccReserve)  || 0,
+      cc_statement_day:  isCC && settingsForm.ccStatementDay ? parseInt(settingsForm.ccStatementDay, 10) : null,
+      cc_due_day:        isCC && settingsForm.ccDueDay       ? parseInt(settingsForm.ccDueDay, 10)       : null,
       updated_at:        new Date().toISOString(),
     }
     const { error } = await supabase
       .from('account_settings')
       .upsert(payload, { onConflict: 'account_id' })
-    if (error) toast.error(error.message)
-    else { toast.success('Settings saved'); setEditId(null); load() }
+    if (error) { toast.error(error.message); return }
+    toast.success('Settings saved')
+    setEditId(null)
+    // Keep the auto credit-card commitment in sync with the new due day / role.
+    try {
+      await syncCreditCardCommitments()
+    } catch (e) {
+      toast.error('Settings saved, but card commitment sync failed')
+    }
+    load()
   }
 
   if (loading) return <Spinner />
@@ -362,6 +376,34 @@ export default function ChartOfAccounts() {
                                 onChange={e => setSettingsForm(f => ({ ...f, ccReserve: e.target.value }))}
                               />
                             </div>
+                            {settingsForm.role === 'credit_card' && (
+                              <>
+                                <div>
+                                  <label className="label">Statement day (1–28)</label>
+                                  <input
+                                    className="input w-40"
+                                    type="number"
+                                    min="1"
+                                    max="28"
+                                    placeholder="e.g. 5"
+                                    value={settingsForm.ccStatementDay}
+                                    onChange={e => setSettingsForm(f => ({ ...f, ccStatementDay: e.target.value }))}
+                                  />
+                                </div>
+                                <div>
+                                  <label className="label">Payment due day (1–28)</label>
+                                  <input
+                                    className="input w-40"
+                                    type="number"
+                                    min="1"
+                                    max="28"
+                                    placeholder="e.g. 25"
+                                    value={settingsForm.ccDueDay}
+                                    onChange={e => setSettingsForm(f => ({ ...f, ccDueDay: e.target.value }))}
+                                  />
+                                </div>
+                              </>
+                            )}
                             <div className="flex gap-2">
                               <button
                                 onClick={() => saveSettings(a.id)}
@@ -380,6 +422,10 @@ export default function ChartOfAccounts() {
                           <p className="text-xs text-gray-400">
                             Role determines how this account is treated in the Fund Optimizer.
                             Leave as <em>Other</em> to exclude it from analysis.
+                            {settingsForm.role === 'credit_card' && (
+                              <> Setting a <strong>due day</strong> auto-creates a recurring monthly
+                              commitment equal to this card’s live outstanding balance.</>
+                            )}
                           </p>
                         </div>
                       </td>
