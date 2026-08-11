@@ -125,11 +125,25 @@ export default function FundOptimizer() {
       .map(a => a.id)
 
     if (ids.length > 0) {
-      const { data: lines } = await supabase
-        .from('journal_lines')
-        .select('account_id, debit, credit, journal_entries!inner(date)')
-        .in('account_id', ids)
-        .lte('journal_entries.date', today)
+      // Page through the lines — PostgREST caps a single response at 1000 rows.
+      // This query spans many accounts at once, so it easily exceeds that and
+      // would otherwise compute balances from a truncated (wrong) line set.
+      const PAGE = 1000
+      let offset = 0
+      let lines = []
+      for (;;) {
+        const { data: batch, error } = await supabase
+          .from('journal_lines')
+          .select('account_id, debit, credit, journal_entries!inner(date)')
+          .in('account_id', ids)
+          .lte('journal_entries.date', today)
+          .order('id', { ascending: true })
+          .range(offset, offset + PAGE - 1)
+        if (error || !batch) break
+        lines = lines.concat(batch)
+        if (batch.length < PAGE) break
+        offset += PAGE
+      }
 
       const balMap        = {}
       const priorMonthMap = {} // lines before this month → opening balance
