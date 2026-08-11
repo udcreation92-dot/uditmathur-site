@@ -27,6 +27,11 @@ function getNthWeekdayOfMonth(year, month, weekday, nth) {
 
 // Returns the single next occurrence of the commitment on or after `from`, up to `to`
 function getNextOccurrence(commitment, from, to) {
+  // Skip occurrences already settled via an early "mark paid".
+  if (commitment.paid_until) {
+    const after = addDays(parseISO(commitment.paid_until), 1)
+    if (after > from) from = after
+  }
   if (commitment.commitment_type === 'one_time') {
     const d = parseISO(commitment.due_date)
     return d >= from && d <= to ? d : null

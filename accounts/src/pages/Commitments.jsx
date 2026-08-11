@@ -65,7 +65,13 @@ function getNthWeekdayOfMonth(year, month, weekday, nth) {
 }
 
 function getNextDueDate(commitment) {
-  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const now = new Date(); now.setHours(0, 0, 0, 0)
+  // Occurrences on/before paid_until are already settled — look past them.
+  let today = now
+  if (commitment.paid_until) {
+    const after = addDays(parseISO(commitment.paid_until), 1)
+    if (after > today) today = after
+  }
   if (commitment.commitment_type === 'one_time') {
     const d = parseISO(commitment.due_date)
     return d >= today ? d : null
@@ -236,6 +242,23 @@ export default function Commitments() {
     const { error } = await supabase.from('commitments').delete().eq('id', id)
     if (error) toast.error(error.message)
     else { toast.success('Deleted'); load() }
+  }
+
+  // Mark the currently-shown occurrence as paid — advances the next due to the
+  // following cycle (or completes a one-time commitment).
+  async function markPaid(c) {
+    const nd = getNextDueDate(c)
+    if (!nd) return
+    const iso = format(nd, 'yyyy-MM-dd')
+    const { error } = await supabase.from('commitments').update({ paid_until: iso }).eq('id', c.id)
+    if (error) toast.error(error.message)
+    else { toast.success(`Marked paid up to ${format(nd, 'dd MMM yyyy')}`); load() }
+  }
+
+  async function undoPaid(c) {
+    const { error } = await supabase.from('commitments').update({ paid_until: null }).eq('id', c.id)
+    if (error) toast.error(error.message)
+    else { toast.success('Payment mark cleared'); load() }
   }
 
   const previewRec = describeRecurrence(buildRecurrence())
@@ -511,12 +534,32 @@ export default function Commitments() {
                   </td>
                   <td className="table-cell text-sm">
                     {nextDue ? (
-                      <span className={isOverdue ? 'text-red-600 font-medium' : 'text-gray-700'}>
-                        {format(nextDue, 'dd MMM yyyy')}
-                        {isOverdue && <span className="text-xs ml-1">(past)</span>}
-                      </span>
+                      <div className="flex flex-col gap-0.5">
+                        <span className={isOverdue ? 'text-red-600 font-medium' : 'text-gray-700'}>
+                          {format(nextDue, 'dd MMM yyyy')}
+                          {isOverdue && <span className="text-xs ml-1">(past)</span>}
+                        </span>
+                        {c.is_active && (
+                          <button
+                            onClick={() => markPaid(c)}
+                            className="text-[11px] text-brand-600 hover:text-brand-700 text-left"
+                            title="Record this instalment as already paid"
+                          >
+                            ✓ Mark paid
+                          </button>
+                        )}
+                      </div>
                     ) : (
-                      <span className="text-gray-400">—</span>
+                      <span className="text-green-600 text-xs font-medium">✓ Paid</span>
+                    )}
+                    {c.paid_until && (
+                      <div className="text-[11px] text-gray-400 mt-0.5">
+                        paid till {format(parseISO(c.paid_until), 'dd MMM')}
+                        {' · '}
+                        <button onClick={() => undoPaid(c)} className="text-gray-500 hover:text-red-600 underline">
+                          undo
+                        </button>
+                      </div>
                     )}
                   </td>
                   <td className="table-cell">
