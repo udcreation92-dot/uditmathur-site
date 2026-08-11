@@ -77,21 +77,33 @@ export default function Ledger() {
 
   async function loadEntries() {
     setLoading(true)
-    let q = supabase.from('journal_entries')
-      .select(`id, date, narration, reference_no,
-        journal_lines(id, debit, credit, account_id,
-          accounts(id, name, type))`)
-      .order('date', { ascending: false })
-      .order('created_at', { ascending: false })
+    // Page through the results — PostgREST caps a single response at 1000 rows,
+    // which silently drops the oldest entries (breaking running balances) in any
+    // book with more than 1000 entries.
+    const PAGE = 1000
+    let offset = 0
+    let rows = []
+    for (;;) {
+      let q = supabase.from('journal_entries')
+        .select(`id, date, narration, reference_no,
+          journal_lines(id, debit, credit, account_id,
+            accounts(id, name, type))`)
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .range(offset, offset + PAGE - 1)
 
-    if (selBook)  q = q.eq('book_id', selBook)
-    if (fromD)    q = q.gte('date', fromD)
-    if (toD)      q = q.lte('date', toD)
+      if (selBook)  q = q.eq('book_id', selBook)
+      if (fromD)    q = q.gte('date', fromD)
+      if (toD)      q = q.lte('date', toD)
 
-    const { data, error } = await q
-    if (error) toast.error(error.message)
+      const { data, error } = await q
+      if (error) { toast.error(error.message); break }
+      const batch = data || []
+      rows = rows.concat(batch)
+      if (batch.length < PAGE) break
+      offset += PAGE
+    }
 
-    let rows = data || []
     if (selAcc) {
       rows = rows.filter(e => e.journal_lines.some(l => l.account_id === selAcc))
     }
