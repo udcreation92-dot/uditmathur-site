@@ -6,6 +6,10 @@ import { format, addDays, parseISO } from 'date-fns'
 // ─── constants ────────────────────────────────────────────────────────────────
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+]
 const NTH  = [
   { value: 1,  label: '1st' },
   { value: 2,  label: '2nd' },
@@ -16,17 +20,34 @@ const NTH  = [
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
+function ordinal(d) {
+  const v = d % 100
+  if (v >= 11 && v <= 13) return `${d}th`
+  const s = d % 10 === 1 ? 'st' : d % 10 === 2 ? 'nd' : d % 10 === 3 ? 'rd' : 'th'
+  return `${d}${s}`
+}
+
 export function describeRecurrence(rec) {
   if (!rec) return ''
+  if (rec.freq === 'daily') return 'Every day'
   if (rec.freq === 'weekly') return `Every ${DAYS[rec.weekday]}`
+  if (rec.freq === 'monthly' && rec.day === -1) return 'Last day of every month'
   if (rec.freq === 'monthly' && rec.day !== undefined) {
-    const d = rec.day
-    const s = d === 1 ? 'st' : d === 2 ? 'nd' : d === 3 ? 'rd' : 'th'
-    return `${d}${s} of every month`
+    return `${ordinal(rec.day)} of every month`
   }
   if (rec.freq === 'monthly' && rec.nth !== undefined) {
     const nth = rec.nth === -1 ? 'Last' : (NTH.find(n => n.value === rec.nth)?.label || '')
     return `${nth} ${DAYS[rec.weekday]} of every month`
+  }
+  const dayLabel = rec.day === -1 ? 'last day' : ordinal(rec.day)
+  if (rec.freq === 'quarterly') {
+    return `${MONTHS[rec.month]} ${dayLabel}, quarterly (every 3 months)`
+  }
+  if (rec.freq === 'half_yearly') {
+    return `${MONTHS[rec.month]} ${dayLabel}, half-yearly (every 6 months)`
+  }
+  if (rec.freq === 'yearly') {
+    return `Every ${MONTHS[rec.month]} ${dayLabel}`
   }
   return 'Recurring'
 }
@@ -51,14 +72,35 @@ function getNextDueDate(commitment) {
   const rec = commitment.recurrence
   if (!rec) return null
 
+  if (rec.freq === 'daily') return today
+
   if (rec.freq === 'weekly') {
     const diff = (rec.weekday - today.getDay() + 7) % 7
     return diff === 0 ? today : addDays(today, diff)
+  }
+  if (rec.freq === 'monthly' && rec.day === -1) {
+    let d = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+    if (d < today) d = new Date(today.getFullYear(), today.getMonth() + 2, 0)
+    return d
   }
   if (rec.freq === 'monthly' && rec.day !== undefined) {
     let d = new Date(today.getFullYear(), today.getMonth(), rec.day)
     if (d < today) d = new Date(today.getFullYear(), today.getMonth() + 1, rec.day)
     return d
+  }
+  if ((rec.freq === 'quarterly' || rec.freq === 'half_yearly' || rec.freq === 'yearly') && rec.month !== undefined) {
+    const interval = rec.freq === 'quarterly' ? 3 : rec.freq === 'half_yearly' ? 6 : 12
+    for (let i = 0; i < 48; i++) {
+      const abs = today.getMonth() + i
+      const y = today.getFullYear() + Math.floor(abs / 12)
+      const m = ((abs % 12) + 12) % 12
+      if ((((m - rec.month) % interval) + interval) % interval !== 0) continue
+      const lastDay = new Date(y, m + 1, 0).getDate()
+      const day = rec.day === -1 ? lastDay : Math.min(rec.day, lastDay)
+      const candidate = new Date(y, m, day)
+      if (candidate >= today) return candidate
+    }
+    return null
   }
   if (rec.freq === 'monthly' && rec.nth !== undefined) {
     let yr = today.getFullYear()
@@ -90,6 +132,7 @@ const EMPTY = {
   recur_nth:      '1',
   recur_weekday:  '0',
   recur_weekday2: '1',
+  recur_month:    '0',
 }
 
 // ─── main page ────────────────────────────────────────────────────────────────
@@ -127,14 +170,29 @@ export default function Commitments() {
 
   function buildRecurrence() {
     if (form.type !== 'recurring') return null
+    if (form.recur_freq === 'daily') {
+      return { freq: 'daily' }
+    }
+    if (form.recur_freq === 'weekly') {
+      return { freq: 'weekly', weekday: Number(form.recur_weekday) }
+    }
     if (form.recur_freq === 'monthly_day') {
       return { freq: 'monthly', day: Number(form.recur_day) }
+    }
+    if (form.recur_freq === 'monthly_last') {
+      return { freq: 'monthly', day: -1 }
     }
     if (form.recur_freq === 'monthly_nth') {
       return { freq: 'monthly', nth: Number(form.recur_nth), weekday: Number(form.recur_weekday2) }
     }
-    if (form.recur_freq === 'weekly') {
-      return { freq: 'weekly', weekday: Number(form.recur_weekday) }
+    if (form.recur_freq === 'quarterly') {
+      return { freq: 'quarterly', month: Number(form.recur_month), day: Number(form.recur_day) }
+    }
+    if (form.recur_freq === 'half_yearly') {
+      return { freq: 'half_yearly', month: Number(form.recur_month), day: Number(form.recur_day) }
+    }
+    if (form.recur_freq === 'yearly') {
+      return { freq: 'yearly', month: Number(form.recur_month), day: Number(form.recur_day) }
     }
     return null
   }
@@ -298,9 +356,14 @@ export default function Commitments() {
                   value={form.recur_freq}
                   onChange={e => setForm(f => ({ ...f, recur_freq: e.target.value }))}
                 >
-                  <option value="monthly_day">Monthly — specific day</option>
-                  <option value="monthly_nth">Monthly — nth weekday</option>
+                  <option value="daily">Daily</option>
                   <option value="weekly">Weekly</option>
+                  <option value="monthly_day">Monthly — specific day</option>
+                  <option value="monthly_last">Monthly — last day</option>
+                  <option value="monthly_nth">Monthly — nth weekday</option>
+                  <option value="quarterly">Quarterly (every 3 months)</option>
+                  <option value="half_yearly">Half-yearly (every 6 months)</option>
+                  <option value="yearly">Yearly</option>
                 </select>
               </div>
 
@@ -317,6 +380,35 @@ export default function Commitments() {
                     required
                   />
                   <span className="text-gray-600">of every month</span>
+                </div>
+              )}
+
+              {(form.recur_freq === 'quarterly' || form.recur_freq === 'half_yearly' || form.recur_freq === 'yearly') && (
+                <div className="flex items-center gap-2 text-sm flex-wrap">
+                  <span className="text-gray-600">On</span>
+                  <select
+                    className="input w-36"
+                    value={form.recur_month}
+                    onChange={e => setForm(f => ({ ...f, recur_month: e.target.value }))}
+                  >
+                    {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                  </select>
+                  <input
+                    className="input w-20 text-center"
+                    type="number"
+                    min="1"
+                    max="31"
+                    value={form.recur_day}
+                    onChange={e => setForm(f => ({ ...f, recur_day: e.target.value }))}
+                    required
+                  />
+                  <span className="text-gray-600">
+                    {form.recur_freq === 'quarterly'
+                      ? '· then every 3 months'
+                      : form.recur_freq === 'half_yearly'
+                      ? '· then every 6 months'
+                      : ''}
+                  </span>
                 </div>
               )}
 
