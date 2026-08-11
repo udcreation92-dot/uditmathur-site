@@ -155,7 +155,7 @@ export default function Commitments() {
       supabase.from('accounts').select('id, name, book_id').order('name'),
       supabase
         .from('commitments')
-        .select('*, accounts(name, books(name))')
+        .select('*, accounts!account_id(name, books(name))')
         .order('description'),
     ])
     setBooks(bk || [])

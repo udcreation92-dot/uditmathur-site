@@ -112,7 +112,7 @@ export default function FundOptimizer() {
       supabase.from('account_settings').select('*'),
       supabase
         .from('commitments')
-        .select('*, accounts(name, type, book_id, books(name))')
+        .select('*, accounts!account_id(name, type, book_id, books(name))')
         .eq('is_active', true),
     ])
 
