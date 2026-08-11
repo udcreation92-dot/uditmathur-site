@@ -28,26 +28,43 @@ function lastStatementDate(statementDay) {
   return `${y}-${m}-${day}`
 }
 
-// Sum a single account's debit/credit across all lines up to (and including)
-// asOf, or across all lines when asOf is null. Paginated — PostgREST caps each
-// response at 1000 rows.
-async function accountDrCr(accountId, asOf) {
-  let offset = 0, dr = 0, cr = 0
+// Compute the amount still due on a credit card's current statement.
+//
+//   statement balance = Σ(credit − debit) for lines dated on/before stmtDate
+//   payments since    = Σ debit for lines dated after stmtDate (a debit to a
+//                       credit-card liability is a payment / credit reducing
+//                       what you owe; new purchases are credits and belong to
+//                       the NEXT statement, so they're excluded)
+//   amount due        = max(0, statement balance − payments since)
+//
+// When stmtDate is null (no statement day set) we fall back to the full live
+// outstanding balance. Paginated — PostgREST caps each response at 1000 rows.
+async function cardAmountDue(accountId, stmtDate) {
+  let offset = 0
+  let stmtDr = 0, stmtCr = 0   // on/before statement date
+  let paidAfter = 0            // debits after statement date
   for (;;) {
-    let q = supabase
+    const { data, error } = await supabase
       .from('journal_lines')
       .select('debit, credit, journal_entries!inner(date)')
       .eq('account_id', accountId)
       .order('id', { ascending: true })
       .range(offset, offset + PAGE - 1)
-    if (asOf) q = q.lte('journal_entries.date', asOf)
-    const { data, error } = await q
     if (error || !data) break
-    for (const l of data) { dr += l.debit || 0; cr += l.credit || 0 }
+    for (const l of data) {
+      const dt = l.journal_entries?.date
+      if (!stmtDate || dt <= stmtDate) {
+        stmtDr += l.debit || 0
+        stmtCr += l.credit || 0
+      } else {
+        paidAfter += l.debit || 0
+      }
+    }
     if (data.length < PAGE) break
     offset += PAGE
   }
-  return { dr, cr }
+  const statementBalance = stmtCr - stmtDr
+  return Math.max(0, statementBalance - paidAfter)
 }
 
 /**
@@ -88,11 +105,10 @@ export async function syncCreditCardCommitments() {
     const stmtDay = Number(s.cc_statement_day)
     const asOf = stmtDay >= 1 && stmtDay <= 28 ? lastStatementDate(stmtDay) : null
 
-    const { dr, cr } = await accountDrCr(s.account_id, asOf)
-    const outstanding = cr - dr
-    if (outstanding <= 0.005) continue   // nothing billed → no commitment
+    const due = await cardAmountDue(s.account_id, asOf)
+    if (due <= 0.005) continue   // statement fully paid (or nothing billed) → no commitment
 
-    const amount = Math.round(outstanding * 100) / 100
+    const amount = Math.round(due * 100) / 100
     const recurrence = { freq: 'monthly', day: dueDay }
     const description = `${card.name} — Card bill (auto)`
     // Pay from the shared bank if resolved; otherwise fall back to the card.
