@@ -79,6 +79,7 @@
     .app-card.tasks   { border-top: 3px solid #818cf8; }
     .app-card.accounts { border-top: 3px solid #3b82f6; }
     .app-card.cameras  { border-top: 3px solid #22c55e; }
+    .app-card.trading  { border-top: 3px solid #f59e0b; }
 
     .app-icon { font-size: 2.25rem; line-height: 1; }
 
@@ -107,7 +108,7 @@
   <p class="greeting">Welcome back</p>
   <h1>Udit Mathur</h1>
 
-  <div class="apps three">
+  <div class="apps" style="grid-template-columns:1fr 1fr">
     <a href="/task/" class="app-card tasks">
       <span class="app-icon">✅</span>
       <span class="app-name">Tasks</span>
@@ -122,6 +123,11 @@
       <span class="app-icon">📷</span>
       <span class="app-name">Cameras</span>
       <span class="app-desc">Live security camera feeds</span>
+    </a>
+    <a href="http://100.86.73.74:4173/task/trading.html" class="app-card trading">
+      <span class="app-icon">📈</span>
+      <span class="app-name">Trading</span>
+      <span class="app-desc">Live analysis &amp; order placement</span>
     </a>
   </div>
 
