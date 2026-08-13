@@ -157,7 +157,7 @@ export default function App() {
             Loading…
           </div>
         ) : view === 'dashboard' ? (
-          <Dashboard {...cardProps} />
+          <Dashboard {...cardProps} onQuickSave={fetchTasks} />
         ) : view === 'all' ? (
           <AllTasks {...cardProps} />
         ) : (

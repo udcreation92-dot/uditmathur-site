@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { isDashboardVisible, isCurrentlyActive, isOverdueNow, sortDashboardTasks } from '../utils/taskUtils'
 import TaskCard from './TaskCard'
+import QuickAdd from './QuickAdd'
 
-export default function Dashboard({ tasks, locations = [], onEdit, onComplete, onDelete }) {
+export default function Dashboard({ tasks, locations = [], onEdit, onComplete, onDelete, onQuickSave }) {
   const [locationFilter, setLocationFilter] = useState(null) // null = All
 
   const visible = tasks.filter(t => isDashboardVisible(t, tasks))
@@ -35,6 +36,9 @@ export default function Dashboard({ tasks, locations = [], onEdit, onComplete, o
           {total} task{total !== 1 ? 's' : ''}
         </span>
       </div>
+
+      {/* Quick add bar */}
+      <QuickAdd locations={locations} onSaved={onQuickSave} />
 
       {/* Location filter chips */}
       {activeLocations.length > 0 && (

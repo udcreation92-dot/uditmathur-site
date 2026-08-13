@@ -24,8 +24,17 @@ const DEFAULT_FORM = {
   status: 'pending',
 }
 
+const todayISO = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+const shiftISO = (n) => {
+  const d = new Date(); d.setDate(d.getDate() + n)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 function toForm(task) {
-  if (!task) return DEFAULT_FORM
+  if (!task) return { ...DEFAULT_FORM, start_date: todayISO() } // smart default: start today
   const rec = task.recurrence || {}
   return {
     title: task.title || '',
@@ -113,7 +122,7 @@ export default function TaskForm({ task, tasks, locations = [], onClose, onSave 
       start_time: form.start_time || null,
       end_time: form.end_time || null,
       start_date: form.start_date || null,
-      due_date: form.due_date || null,
+      due_date: form.due_date || form.start_date || null, // smart default: due = start
       duration_minutes: totalMins,
       is_recurring: form.is_recurring,
       recurrence,
@@ -190,14 +199,29 @@ export default function TaskForm({ task, tasks, locations = [], onClose, onSave 
             </Field>
           </div>
 
+          {/* Date quick chips */}
+          <div className="flex gap-2 flex-wrap -mt-1">
+            <Chip onClick={() => set('start_date', todayISO())}>Today</Chip>
+            <Chip onClick={() => set('start_date', shiftISO(1))}>Tomorrow</Chip>
+            <Chip onClick={() => set('start_date', shiftISO(2))}>+2d</Chip>
+            <Chip onClick={() => set('due_date', form.start_date)}>Due = start</Chip>
+          </div>
+
           {/* Time frame */}
           <div className="grid grid-cols-2 gap-3">
             <Field label="Start Time">
               <input type="time" className="input" value={form.start_time} onChange={e => set('start_time', e.target.value)} />
             </Field>
-            <Field label="End Time">
+            <Field label="End Time (deadline)">
               <input type="time" className="input" value={form.end_time} onChange={e => set('end_time', e.target.value)} />
             </Field>
+          </div>
+
+          {/* Time preset chips */}
+          <div className="flex gap-2 flex-wrap -mt-1">
+            <Chip onClick={() => { set('start_time', '09:00'); set('end_time', '12:00') }}>9–12</Chip>
+            <Chip onClick={() => { set('start_time', '14:00'); set('end_time', '17:00') }}>2–5</Chip>
+            <Chip onClick={() => { set('start_time', ''); set('end_time', '') }}>Clear</Chip>
           </div>
 
           {/* Duration */}
@@ -221,6 +245,14 @@ export default function TaskForm({ task, tasks, locations = [], onClose, onSave 
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">m</span>
               </div>
+            </div>
+            {/* Duration quick chips */}
+            <div className="flex gap-2 flex-wrap mt-2">
+              {[['5m', 0, 5], ['15m', 0, 15], ['30m', 0, 30], ['1h', 1, 0], ['2h', 2, 0]].map(([label, h, m]) => (
+                <Chip key={label} onClick={() => { set('duration_hours', h ? String(h) : ''); set('duration_minutes_extra', m ? String(m) : '') }}>
+                  {label}
+                </Chip>
+              ))}
             </div>
           </Field>
 
@@ -361,5 +393,17 @@ function Field({ label, children }) {
       <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">{label}</label>
       {children}
     </div>
+  )
+}
+
+function Chip({ onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-xs font-medium px-2.5 py-1 rounded-full border border-slate-200 text-slate-600 bg-white hover:border-blue-400 hover:text-blue-600 transition-colors"
+    >
+      {children}
+    </button>
   )
 }
