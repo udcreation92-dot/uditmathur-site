@@ -1,7 +1,8 @@
+import { useState, useEffect } from 'react'
 import { format, parseISO, startOfDay, isAfter } from 'date-fns'
 import { formatTime, formatDuration, getRecurrenceLabel, isTaskDoneForToday } from '../utils/taskUtils'
 
-export default function TaskCard({ task, tasks, locations = [], onComplete, onEdit, onDelete }) {
+export default function TaskCard({ task, tasks, locations = [], bucket, onComplete, onEdit, onDelete }) {
   const today = startOfDay(new Date())
   const isOverdue = !task.is_recurring && task.due_date && isAfter(today, startOfDay(parseISO(task.due_date)))
 
@@ -38,6 +39,9 @@ export default function TaskCard({ task, tasks, locations = [], onComplete, onEd
         <div className="flex-1 min-w-0">
           {/* Badges */}
           <div className="flex flex-wrap gap-1.5 mb-1.5">
+            {(bucket === 'current' || bucket === 'overdue') && (
+              <Countdown task={task} overdue={bucket === 'overdue'} />
+            )}
             {task.is_recurring && (
               <Badge color="purple">↻ {getRecurrenceLabel(task.recurrence)}</Badge>
             )}
@@ -110,6 +114,75 @@ export default function TaskCard({ task, tasks, locations = [], onComplete, onEd
       </div>
 
     </div>
+  )
+}
+
+// The absolute deadline moment for a task: its deadline date at end_time.
+// Recurring -> today; else due_date, then start_date, then today. Null if no end_time.
+function deadlineFor(task) {
+  if (!task.end_time) return null
+  let datePart
+  if (task.is_recurring) datePart = startOfDay(new Date())
+  else if (task.due_date) datePart = startOfDay(parseISO(task.due_date))
+  else if (task.start_date) datePart = startOfDay(parseISO(task.start_date))
+  else datePart = startOfDay(new Date())
+  const [h, m] = task.end_time.split(':').map(Number)
+  const d = new Date(datePart)
+  d.setHours(h, m, 0, 0)
+  return d
+}
+
+function fmtSpan(ms) {
+  const s = Math.floor(Math.abs(ms) / 1000)
+  const d = Math.floor(s / 86400)
+  const h = Math.floor((s % 86400) / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = s % 60
+  if (d > 0) return `${d}d ${h}h`
+  if (h > 0) return `${h}h ${m}m`
+  if (m > 0) return `${m}m ${sec}s`
+  return `${sec}s`
+}
+
+// Live countdown pill. Ticks every second. Shows "time left" for current tasks and
+// "overdue by ..." for overdue tasks.
+function Countdown({ task, overdue }) {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  const deadline = deadlineFor(task)
+
+  // Overdue purely by date (no usable end_time): count from end of the due day.
+  if (!deadline) {
+    if (overdue && task.due_date) {
+      const eod = startOfDay(parseISO(task.due_date))
+      eod.setHours(23, 59, 0, 0)
+      return <CountChip overdue text={`overdue by ${fmtSpan(now - eod.getTime())}`} />
+    }
+    return null
+  }
+
+  const diff = deadline.getTime() - now
+  if (diff <= 0) return <CountChip overdue text={`overdue by ${fmtSpan(diff)}`} />
+
+  const urgent = diff < 30 * 60 * 1000 // under 30 min left
+  return <CountChip urgent={urgent} text={`${fmtSpan(diff)} left`} />
+}
+
+function CountChip({ text, overdue, urgent }) {
+  const cls = overdue
+    ? 'bg-red-600 text-white'
+    : urgent
+      ? 'bg-amber-500 text-white'
+      : 'bg-emerald-600 text-white'
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full tabular-nums ${cls}`}>
+      <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 3h6"/></svg>
+      {text}
+    </span>
   )
 }
 

@@ -144,10 +144,18 @@ export function isOverdueNow(task) {
     return false
   }
 
-  // Non-recurring: past due date
-  if (task.due_date && isAfter(today, startOfDay(parseISO(task.due_date)))) return true
+  // Non-recurring with a due date: overdue requires the DEADLINE DATE to have arrived.
+  // A future due date is never overdue, even if today's end_time has already passed.
+  if (task.due_date) {
+    const due = startOfDay(parseISO(task.due_date))
+    if (isAfter(due, today)) return false                 // deadline still in the future
+    if (isAfter(today, due)) return true                  // deadline date fully passed
+    // Deadline is today -> overdue only once the end_time has passed.
+    if (task.start_time && task.end_time) return cur > toMins(task.end_time)
+    return false
+  }
 
-  // Non-recurring: time window passed today
+  // No due date: fall back to today's time window.
   if (task.start_time && task.end_time) {
     return cur > toMins(task.end_time)
   }

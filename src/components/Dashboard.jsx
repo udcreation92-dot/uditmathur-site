@@ -69,7 +69,7 @@ export default function Dashboard({ tasks, locations = [], onEdit, onComplete, o
       {overdue.length > 0 && (
         <Section title="Overdue" count={overdue.length} accent="red" subtitle="Missed time window">
           {overdue.map(t => (
-            <TaskCard key={t.id} task={t} tasks={tasks} locations={locations} onEdit={onEdit} onComplete={onComplete} onDelete={onDelete} />
+            <TaskCard key={t.id} task={t} tasks={tasks} locations={locations} bucket="overdue" onEdit={onEdit} onComplete={onComplete} onDelete={onDelete} />
           ))}
         </Section>
       )}
@@ -77,7 +77,7 @@ export default function Dashboard({ tasks, locations = [], onEdit, onComplete, o
       {current.length > 0 && (
         <Section title="Current" count={current.length} accent="blue" dot="bg-green-400" subtitle="Active now">
           {current.map(t => (
-            <TaskCard key={t.id} task={t} tasks={tasks} locations={locations} onEdit={onEdit} onComplete={onComplete} onDelete={onDelete} />
+            <TaskCard key={t.id} task={t} tasks={tasks} locations={locations} bucket="current" onEdit={onEdit} onComplete={onComplete} onDelete={onDelete} />
           ))}
         </Section>
       )}
