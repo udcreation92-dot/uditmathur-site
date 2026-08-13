@@ -20,6 +20,60 @@ export function isRecurringTaskDue(task) {
   }
 }
 
+// The most recent scheduled occurrence of a recurring task, on or before today (startOfDay), or null.
+function lastScheduledOccurrence(task) {
+  const rec = task.recurrence
+  if (!rec) return null
+  const now = new Date()
+  const today = startOfDay(now)
+
+  switch (rec.frequency) {
+    case 'daily':
+      return today
+    case 'weekly': {
+      const days = rec.days || []
+      if (!days.length) return null
+      for (let back = 0; back < 7; back++) {
+        const d = new Date(today)
+        d.setDate(today.getDate() - back)
+        if (days.includes(d.getDay())) return startOfDay(d)
+      }
+      return null
+    }
+    case 'monthly': {
+      const day = rec.day
+      const occ = now.getDate() >= day
+        ? new Date(now.getFullYear(), now.getMonth(), day)
+        : new Date(now.getFullYear(), now.getMonth() - 1, day)
+      return startOfDay(occ)
+    }
+    case 'yearly': {
+      const month = (rec.month || 1) - 1
+      let occ = new Date(now.getFullYear(), month, rec.day)
+      if (isAfter(startOfDay(occ), today)) occ = new Date(now.getFullYear() - 1, month, rec.day)
+      return startOfDay(occ)
+    }
+    default:
+      return null
+  }
+}
+
+// A recurring task is "missed" if its most recent scheduled occurrence was on a PAST day
+// and it has not been completed on/after that occurrence. It keeps nagging (overdue + visible)
+// until the user completes it, or until the next occurrence arrives (which resets it).
+export function isRecurringMissed(task) {
+  if (!task.is_recurring || !task.recurrence) return false
+  const occ = lastScheduledOccurrence(task)
+  if (!occ) return false
+  const today = startOfDay(new Date())
+  // Occurrence is today (or future) -> handled by normal due-today / end_time logic, not "missed".
+  if (!isAfter(today, occ)) return false
+  // Completed on or after the occurrence day -> done, not missed.
+  const lastCompleted = task.last_completed_at ? startOfDay(new Date(task.last_completed_at)) : null
+  if (lastCompleted && !isAfter(occ, lastCompleted)) return false
+  return true
+}
+
 export function isTaskDoneForToday(task) {
   if (!task) return false
   if (task.is_recurring) {
@@ -38,7 +92,7 @@ export function prerequisitesMet(task, allTasks) {
 }
 
 export function isDashboardVisible(task, allTasks) {
-  if (task.is_recurring) return isRecurringTaskDue(task) && prerequisitesMet(task, allTasks)
+  if (task.is_recurring) return (isRecurringTaskDue(task) || isRecurringMissed(task)) && prerequisitesMet(task, allTasks)
 
   if (task.status === 'completed' || task.status === 'cancelled') return false
 
@@ -81,7 +135,9 @@ export function isOverdueNow(task) {
   const cur = getCurrentMins()
 
   if (task.is_recurring) {
-    // Recurring: overdue if time window has fully passed today
+    // Missed on a previous scheduled day and not completed since -> stays overdue.
+    if (isRecurringMissed(task)) return true
+    // Otherwise overdue if today's time window has fully passed.
     if (task.start_time && task.end_time) {
       return cur > toMins(task.end_time)
     }
