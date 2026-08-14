@@ -4,7 +4,7 @@ import TaskCard from './TaskCard'
 import GoalCard from './GoalCard'
 import QuickAdd from './QuickAdd'
 
-export default function Dashboard({ tasks, locations = [], onEdit, onComplete, onDelete, onQuickSave }) {
+export default function Dashboard({ tasks, locations = [], onEdit, onComplete, onDelete, onQuickSave, onAddGoal, onAddStep }) {
   const [locationFilter, setLocationFilter] = useState(null) // null = All
 
   // Ids of tasks that are goals (have ≥1 sub-task).
@@ -23,10 +23,12 @@ export default function Dashboard({ tasks, locations = [], onEdit, onComplete, o
 
   const visible = tasks.filter(t => isDashboardVisible(t, tasks))
 
+  // Sub-tasks stay in the priority matrix like any task (they respect their own prereqs
+  // and timing). Only the goal PARENT is excluded — it's a container, not an action.
   const filtered = (locationFilter
     ? visible.filter(t => t.location_id === locationFilter)
     : visible
-  ).filter(t => !t.parent_id && !goalIdSet.has(t.id)) // sub-tasks + goals live in the Goals section
+  ).filter(t => !goalIdSet.has(t.id))
 
   const overdue  = sortDashboardTasks(filtered.filter(t => isOverdueNow(t)))
   const current  = sortDashboardTasks(filtered.filter(t => !isOverdueNow(t) && isCurrentlyActive(t)))
@@ -55,6 +57,14 @@ export default function Dashboard({ tasks, locations = [], onEdit, onComplete, o
 
       {/* Quick add bar */}
       <QuickAdd locations={locations} onSaved={onQuickSave} />
+
+      {/* New goal */}
+      <button
+        onClick={onAddGoal}
+        className="w-full py-2 rounded-xl border border-dashed border-indigo-300 text-indigo-600 text-sm font-medium hover:bg-indigo-50 transition-colors"
+      >
+        🎯 New Goal (multi-step)
+      </button>
 
       {/* Location filter chips */}
       {activeLocations.length > 0 && (
@@ -85,7 +95,7 @@ export default function Dashboard({ tasks, locations = [], onEdit, onComplete, o
       {goals.length > 0 && (
         <Section title="Goals" count={goals.length} accent="indigo" subtitle="Multi-step">
           {goals.map(g => (
-            <GoalCard key={g.id} goal={g} tasks={tasks} locations={locations} onEdit={onEdit} onComplete={onComplete} onDelete={onDelete} />
+            <GoalCard key={g.id} goal={g} tasks={tasks} locations={locations} onEdit={onEdit} onComplete={onComplete} onDelete={onDelete} onAddStep={onAddStep} />
           ))}
         </Section>
       )}

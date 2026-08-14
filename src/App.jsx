@@ -3,6 +3,7 @@ import { supabase } from './lib/supabase'
 import Dashboard from './components/Dashboard'
 import AllTasks from './components/AllTasks'
 import TaskForm from './components/TaskForm'
+import GoalForm from './components/GoalForm'
 import Header from './components/Header'
 import LocationManager from './components/LocationManager'
 import LoginPage from './components/LoginPage'
@@ -17,6 +18,8 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [editTask, setEditTask] = useState(null)
   const [showForm, setShowForm] = useState(false)
+  const [addParentId, setAddParentId] = useState(null)
+  const [showGoalForm, setShowGoalForm] = useState(false)
   const [configError, setConfigError] = useState(false)
   const [session, setSession] = useState(null)
   const [authChecked, setAuthChecked] = useState(false)
@@ -81,9 +84,9 @@ export default function App() {
     if (data) setLocations(data)
   }
 
-  function openAdd() { setEditTask(null); setShowForm(true) }
-  function openEdit(task) { setEditTask(task); setShowForm(true) }
-  function closeForm() { setShowForm(false); setEditTask(null) }
+  function openAdd(parentId = null) { setEditTask(null); setAddParentId(typeof parentId === 'string' ? parentId : null); setShowForm(true) }
+  function openEdit(task) { setEditTask(task); setAddParentId(null); setShowForm(true) }
+  function closeForm() { setShowForm(false); setEditTask(null); setAddParentId(null) }
 
   async function completeTask(task) {
     if (task.is_recurring) {
@@ -157,7 +160,7 @@ export default function App() {
             Loading…
           </div>
         ) : view === 'dashboard' ? (
-          <Dashboard {...cardProps} onQuickSave={fetchTasks} />
+          <Dashboard {...cardProps} onQuickSave={fetchTasks} onAddGoal={() => setShowGoalForm(true)} onAddStep={openAdd} />
         ) : view === 'all' ? (
           <AllTasks {...cardProps} />
         ) : (
@@ -196,7 +199,11 @@ export default function App() {
       </nav>
 
       {showForm && (
-        <TaskForm task={editTask} tasks={tasks} locations={locations} onClose={closeForm} onSave={fetchTasks} />
+        <TaskForm task={editTask} tasks={tasks} locations={locations} defaultParentId={addParentId} onClose={closeForm} onSave={fetchTasks} />
+      )}
+
+      {showGoalForm && (
+        <GoalForm onClose={() => setShowGoalForm(false)} onSaved={fetchTasks} />
       )}
     </div>
   )

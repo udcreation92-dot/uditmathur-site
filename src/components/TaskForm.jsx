@@ -34,8 +34,8 @@ const shiftISO = (n) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function toForm(task) {
-  if (!task) return { ...DEFAULT_FORM, start_date: todayISO() } // smart default: start today
+function toForm(task, defaultParentId) {
+  if (!task) return { ...DEFAULT_FORM, start_date: todayISO(), parent_id: defaultParentId || '' } // smart default: start today
   const rec = task.recurrence || {}
   return {
     title: task.title || '',
@@ -59,8 +59,8 @@ function toForm(task) {
   }
 }
 
-export default function TaskForm({ task, tasks, locations = [], onClose, onSave }) {
-  const [form, setForm] = useState(() => toForm(task))
+export default function TaskForm({ task, tasks, locations = [], defaultParentId, onClose, onSave }) {
+  const [form, setForm] = useState(() => toForm(task, defaultParentId))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
