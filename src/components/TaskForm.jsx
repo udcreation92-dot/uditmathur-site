@@ -64,8 +64,12 @@ export default function TaskForm({ task, tasks, locations = [], onClose, onSave 
 
   const isEdit = !!task
 
-  // Eligible prerequisite tasks (exclude self and already completed ones shown for edit)
-  const prereqOptions = tasks.filter(t => t.id !== task?.id && t.status !== 'cancelled')
+  // Eligible prerequisite tasks: exclude self, and show only tasks that are still
+  // pending (not completed or cancelled). Recurring tasks stay eligible. Any already-
+  // linked prerequisite is kept even if it no longer appears here (it stays in form state).
+  const prereqOptions = tasks.filter(t =>
+    t.id !== task?.id && t.status !== 'cancelled' && t.status !== 'completed'
+  )
 
   function set(key, value) {
     setForm(f => ({ ...f, [key]: value }))
