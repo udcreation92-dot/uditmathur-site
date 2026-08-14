@@ -1,30 +1,18 @@
 import { useState } from 'react'
-import { isDashboardVisible, isCurrentlyActive, isOverdueNow, sortDashboardTasks, getSubtasks } from '../utils/taskUtils'
+import { isDashboardVisible, isCurrentlyActive, isOverdueNow, sortDashboardTasks } from '../utils/taskUtils'
 import TaskCard from './TaskCard'
-import GoalCard from './GoalCard'
+import GoalsPanel from './GoalsPanel'
 import QuickAdd from './QuickAdd'
 
 export default function Dashboard({ tasks, locations = [], onEdit, onComplete, onDelete, onQuickSave, onAddGoal, onAddStep }) {
   const [locationFilter, setLocationFilter] = useState(null) // null = All
 
-  // Ids of tasks that are goals (have ≥1 sub-task).
+  // Ids of tasks that are goals (have ≥1 sub-task). Goal PARENTS are excluded from the
+  // matrix (they're containers); their sub-tasks stay in the matrix like any task.
   const goalIdSet = new Set(tasks.filter(t => t.parent_id).map(t => t.parent_id))
-
-  // Goals to show: has children, still open, and is not itself a sub-task of another goal.
-  let goals = tasks.filter(t =>
-    goalIdSet.has(t.id) && !t.parent_id && t.status !== 'completed' && t.status !== 'cancelled'
-  )
-  if (locationFilter) {
-    goals = goals.filter(g =>
-      g.location_id === locationFilter ||
-      getSubtasks(g, tasks).some(s => s.location_id === locationFilter)
-    )
-  }
 
   const visible = tasks.filter(t => isDashboardVisible(t, tasks))
 
-  // Sub-tasks stay in the priority matrix like any task (they respect their own prereqs
-  // and timing). Only the goal PARENT is excluded — it's a container, not an action.
   const filtered = (locationFilter
     ? visible.filter(t => t.location_id === locationFilter)
     : visible
@@ -34,15 +22,19 @@ export default function Dashboard({ tasks, locations = [], onEdit, onComplete, o
   const current  = sortDashboardTasks(filtered.filter(t => !isOverdueNow(t) && isCurrentlyActive(t)))
   const upcoming = sortDashboardTasks(filtered.filter(t => !isOverdueNow(t) && !isCurrentlyActive(t)))
 
-  const total = goals.length + overdue.length + current.length + upcoming.length
+  const total = overdue.length + current.length + upcoming.length
 
   // Only show locations that have visible tasks
   const activeLocations = locations.filter(loc =>
     visible.some(t => t.location_id === loc.id)
   )
 
+  const goalsProps = { tasks, locations, onEdit, onComplete, onDelete, onAddGoal, onAddStep }
+
   return (
-    <div className="space-y-5">
+    <div className="lg:flex lg:gap-6 lg:items-start">
+      {/* Left: the priority matrix */}
+      <div className="flex-1 min-w-0 space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-slate-800">Today's Dashboard</h2>
@@ -58,10 +50,10 @@ export default function Dashboard({ tasks, locations = [], onEdit, onComplete, o
       {/* Quick add bar */}
       <QuickAdd locations={locations} onSaved={onQuickSave} />
 
-      {/* New goal */}
+      {/* New goal — mobile only (desktop has the goals sidebar) */}
       <button
         onClick={onAddGoal}
-        className="w-full py-2 rounded-xl border border-dashed border-indigo-300 text-indigo-600 text-sm font-medium hover:bg-indigo-50 transition-colors"
+        className="lg:hidden w-full py-2 rounded-xl border border-dashed border-indigo-300 text-indigo-600 text-sm font-medium hover:bg-indigo-50 transition-colors"
       >
         🎯 New Goal (multi-step)
       </button>
@@ -92,14 +84,6 @@ export default function Dashboard({ tasks, locations = [], onEdit, onComplete, o
         </div>
       )}
 
-      {goals.length > 0 && (
-        <Section title="Goals" count={goals.length} accent="indigo" subtitle="Multi-step">
-          {goals.map(g => (
-            <GoalCard key={g.id} goal={g} tasks={tasks} locations={locations} onEdit={onEdit} onComplete={onComplete} onDelete={onDelete} onAddStep={onAddStep} />
-          ))}
-        </Section>
-      )}
-
       {overdue.length > 0 && (
         <Section title="Overdue" count={overdue.length} accent="red" subtitle="Missed time window">
           {overdue.map(t => (
@@ -123,6 +107,12 @@ export default function Dashboard({ tasks, locations = [], onEdit, onComplete, o
           ))}
         </Section>
       )}
+      </div>
+
+      {/* Right: goals sidebar (desktop only; mobile uses the Goals tab) */}
+      <aside className="hidden lg:block w-[340px] shrink-0 lg:sticky lg:top-6">
+        <GoalsPanel {...goalsProps} />
+      </aside>
     </div>
   )
 }

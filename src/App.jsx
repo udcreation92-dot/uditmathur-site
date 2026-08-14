@@ -4,6 +4,7 @@ import Dashboard from './components/Dashboard'
 import AllTasks from './components/AllTasks'
 import TaskForm from './components/TaskForm'
 import GoalForm from './components/GoalForm'
+import GoalsPanel from './components/GoalsPanel'
 import Header from './components/Header'
 import LocationManager from './components/LocationManager'
 import LoginPage from './components/LoginPage'
@@ -150,7 +151,7 @@ export default function App() {
         </div>
       )}
 
-      <main className="max-w-2xl mx-auto px-4 py-6 pb-24 md:pb-6">
+      <main className={`mx-auto px-4 py-6 pb-24 md:pb-6 ${view === 'dashboard' ? 'max-w-6xl' : 'max-w-2xl'}`}>
         {loading ? (
           <div className="flex items-center justify-center py-20 text-slate-400">
             <svg className="animate-spin w-6 h-6 mr-2" fill="none" viewBox="0 0 24 24">
@@ -161,6 +162,8 @@ export default function App() {
           </div>
         ) : view === 'dashboard' ? (
           <Dashboard {...cardProps} onQuickSave={fetchTasks} onAddGoal={() => setShowGoalForm(true)} onAddStep={openAdd} />
+        ) : view === 'goals' ? (
+          <GoalsPanel {...cardProps} onAddGoal={() => setShowGoalForm(true)} onAddStep={openAdd} />
         ) : view === 'all' ? (
           <AllTasks {...cardProps} />
         ) : (
@@ -176,6 +179,10 @@ export default function App() {
             <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
           </svg>
           Dashboard
+        </MobileNavBtn>
+        <MobileNavBtn active={view === 'goals'} onClick={() => setView('goals')}>
+          <span className="text-lg leading-none">🎯</span>
+          Goals
         </MobileNavBtn>
         <button
           onClick={openAdd}
