@@ -185,16 +185,28 @@ export function isOverdueNow(task) {
   return false
 }
 
+// The window of time in which a task CAN be done (end_time - start_time), in minutes.
+// A task with no start/end window is "anytime" → treated as the widest (least constrained).
+function windowMins(t) {
+  if (!t.start_time || !t.end_time) return Infinity
+  const w = toMins(t.end_time) - toMins(t.start_time)
+  return w > 0 ? w : Infinity
+}
+
 export function sortDashboardTasks(tasks) {
   return [...tasks].sort((a, b) => {
     // 1. Recurring first
     if (a.is_recurring !== b.is_recurring) return a.is_recurring ? -1 : 1
 
-    // 2. Least duration first
+    // 2. Shortest available window first (a tight start–end slot must be slotted first)
+    const wa = windowMins(a), wb = windowMins(b)
+    if (wa !== wb) return wa - wb
+
+    // 3. Shortest duration first (quick wins)
     const durDiff = (a.duration_minutes || 0) - (b.duration_minutes || 0)
     if (durDiff !== 0) return durDiff
 
-    // 3. Closest due time / date first (overdue = highest priority)
+    // 4. Closest due date first
     const aDate = a.due_date ? parseISO(a.due_date) : null
     const bDate = b.due_date ? parseISO(b.due_date) : null
     if (aDate && bDate) {
