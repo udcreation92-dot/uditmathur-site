@@ -14,11 +14,11 @@ let UID = 0
 const newStep = () => ({
   uid: ++UID, title: '', open: false,
   duration_minutes: 0, start_time: '', end_time: '',
-  start_date: todayISO(), due_date: '',
+  start_date: todayISO(), due_date: '', location_id: '',
   prereqSteps: [], prereqTasks: [],
 })
 
-export default function GoalForm({ tasks = [], onClose, onSaved }) {
+export default function GoalForm({ tasks = [], locations = [], onClose, onSaved }) {
   const [title, setTitle] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [steps, setSteps] = useState(() => [newStep(), newStep(), newStep()])
@@ -71,6 +71,7 @@ export default function GoalForm({ tasks = [], onClose, onSaved }) {
         start_date: s.start_date || null, due_date: s.due_date || null,
         start_time: s.start_time || null, end_time: s.end_time || null,
         duration_minutes: s.duration_minutes || 0,
+        location_id: s.location_id || null,
       }).select('id').single()
       if (ce) { setError(ce.message); setSaving(false); return }
       uidToId[s.uid] = child.id
@@ -183,6 +184,18 @@ export default function GoalForm({ tasks = [], onClose, onSaved }) {
                         <input type="time" value={s.end_time} onChange={e => setField(s.uid, 'end_time', e.target.value)}
                           className="px-2 py-1 border border-slate-200 rounded-lg text-sm bg-white" />
                       </Detail>
+
+                      {/* Location */}
+                      {locations.length > 0 && (
+                        <Detail label="Location">
+                          <Chip active={!s.location_id} onClick={() => setField(s.uid, 'location_id', '')}>Any</Chip>
+                          {locations.map(loc => (
+                            <Chip key={loc.id} active={s.location_id === loc.id} onClick={() => setField(s.uid, 'location_id', loc.id)}>
+                              📍 {loc.name}
+                            </Chip>
+                          ))}
+                        </Detail>
+                      )}
 
                       {/* Prerequisites */}
                       <div>

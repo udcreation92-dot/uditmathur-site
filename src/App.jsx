@@ -203,7 +203,7 @@ export default function App() {
       )}
 
       {showGoalForm && (
-        <GoalForm tasks={tasks} onClose={() => setShowGoalForm(false)} onSaved={fetchTasks} />
+        <GoalForm tasks={tasks} locations={locations} onClose={() => setShowGoalForm(false)} onSaved={fetchTasks} />
       )}
     </div>
   )
