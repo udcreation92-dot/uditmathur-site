@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import PrereqSelect from './PrereqSelect'
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -69,10 +70,6 @@ export default function TaskForm({ task, tasks, locations = [], defaultParentId,
   // Eligible prerequisite tasks: exclude self, and show only tasks that are still
   // pending (not completed or cancelled). Recurring tasks stay eligible. Any already-
   // linked prerequisite is kept even if it no longer appears here (it stays in form state).
-  const prereqOptions = tasks.filter(t =>
-    t.id !== task?.id && t.status !== 'cancelled' && t.status !== 'completed'
-  )
-
   // Eligible goals to nest this task under: any non-cancelled task except itself and
   // its own direct sub-tasks (prevents the obvious cycles).
   const parentOptions = tasks.filter(t =>
@@ -370,27 +367,15 @@ export default function TaskForm({ task, tasks, locations = [], defaultParentId,
             </Field>
           )}
 
-          {/* Prerequisites */}
-          {prereqOptions.length > 0 && (
-            <Field label="Prerequisites (must be done first)">
-              <div className="max-h-36 overflow-y-auto space-y-1 border border-slate-200 rounded-lg p-2 bg-slate-50">
-                {prereqOptions.map(t => (
-                  <label key={t.id} className="flex items-center gap-2 cursor-pointer py-0.5">
-                    <input
-                      type="checkbox"
-                      checked={form.prerequisite_ids.includes(t.id)}
-                      onChange={() => togglePrereq(t.id)}
-                      className="rounded"
-                    />
-                    <span className="text-sm text-slate-700 truncate">{t.title}</span>
-                    {t.status === 'completed' && (
-                      <span className="text-xs text-green-600 ml-auto shrink-0">✓ done</span>
-                    )}
-                  </label>
-                ))}
-              </div>
-            </Field>
-          )}
+          {/* Prerequisites (grouped by goal) */}
+          <Field label="Prerequisites (must be done first)">
+            <PrereqSelect
+              allTasks={tasks}
+              excludeIds={task?.id ? [task.id] : []}
+              selectedTaskIds={form.prerequisite_ids}
+              onToggleTask={togglePrereq}
+            />
+          </Field>
 
           {error && <p className="text-sm text-red-600">{error}</p>}
         </form>
