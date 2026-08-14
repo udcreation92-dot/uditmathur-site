@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react'
 import { format, parseISO, startOfDay, isAfter } from 'date-fns'
 import { formatTime, formatDuration, getRecurrenceLabel, isTaskDoneForToday } from '../utils/taskUtils'
 
-export default function TaskCard({ task, tasks, locations = [], bucket, onComplete, onEdit, onDelete }) {
+export default function TaskCard({ task, tasks, locations = [], bucket, nested = false, onComplete, onEdit, onDelete }) {
   const today = startOfDay(new Date())
   const isOverdue = !task.is_recurring && task.due_date && isAfter(today, startOfDay(parseISO(task.due_date)))
+  const isDone = isTaskDoneForToday(task)
+  const parentGoal = task.parent_id ? tasks.find(t => t.id === task.parent_id) : null
 
   const prereqTasks = (task.prerequisite_ids || [])
     .map(id => tasks.find(t => t.id === id))
@@ -20,18 +22,21 @@ export default function TaskCard({ task, tasks, locations = [], bucket, onComple
 
   return (
     <div
-      className={`bg-white rounded-xl border p-4 transition-shadow hover:shadow-md ${
-        isOverdue ? 'border-red-200' : isBlocked ? 'border-orange-200' : 'border-slate-100'
+      className={`rounded-xl border transition-shadow hover:shadow-md ${nested ? 'p-3' : 'p-4'} ${
+        isDone ? 'bg-slate-50 border-slate-100' :
+        isOverdue ? 'bg-white border-red-200' : isBlocked ? 'bg-white border-orange-200' : 'bg-white border-slate-100'
       }`}
     >
       <div className="flex items-start gap-3">
         {/* Round complete button */}
         <button
           onClick={() => onComplete(task)}
-          title="Mark done"
-          className="mt-1 w-6 h-6 shrink-0 rounded-full border-2 border-slate-300 hover:border-green-500 hover:bg-green-50 flex items-center justify-center transition-colors group"
+          title={isDone ? 'Completed' : 'Mark done'}
+          className={`mt-1 w-6 h-6 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors group ${
+            isDone ? 'border-green-500 bg-green-500' : 'border-slate-300 hover:border-green-500 hover:bg-green-50'
+          }`}
         >
-          <svg className="w-3 h-3 text-transparent group-hover:text-green-500 transition-colors" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+          <svg className={`w-3 h-3 ${isDone ? 'text-white' : 'text-transparent group-hover:text-green-500'} transition-colors`} fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
           </svg>
         </button>
@@ -39,19 +44,20 @@ export default function TaskCard({ task, tasks, locations = [], bucket, onComple
         <div className="flex-1 min-w-0">
           {/* Badges */}
           <div className="flex flex-wrap gap-1.5 mb-1.5">
-            {(bucket === 'current' || bucket === 'overdue') && (
+            {!isDone && (bucket === 'current' || bucket === 'overdue') && (
               <Countdown task={task} overdue={bucket === 'overdue'} />
             )}
+            {parentGoal && !nested && <Badge color="indigo">🎯 {parentGoal.title}</Badge>}
             {task.is_recurring && (
               <Badge color="purple">↻ {getRecurrenceLabel(task.recurrence)}</Badge>
             )}
             {location && <Badge color="teal">📍 {location.name}</Badge>}
-            {isOverdue && <Badge color="red">Overdue</Badge>}
-            {isBlocked && <Badge color="orange">Blocked</Badge>}
+            {isOverdue && !isDone && <Badge color="red">Overdue</Badge>}
+            {isBlocked && !isDone && <Badge color="orange">Blocked</Badge>}
             {task.status === 'in_progress' && <Badge color="blue">In Progress</Badge>}
           </div>
 
-          <h3 className="font-semibold text-slate-900 leading-snug">{task.title}</h3>
+          <h3 className={`font-semibold leading-snug ${isDone ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{task.title}</h3>
 
           {task.description && (
             <p className="text-sm text-slate-500 mt-0.5 line-clamp-2">{task.description}</p>
@@ -194,6 +200,7 @@ function Badge({ color, children }) {
     blue: 'bg-blue-100 text-blue-700',
     green: 'bg-green-100 text-green-700',
     teal: 'bg-teal-100 text-teal-700',
+    indigo: 'bg-indigo-100 text-indigo-700',
   }
   return (
     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${styles[color]}`}>

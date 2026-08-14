@@ -1,22 +1,38 @@
 import { useState } from 'react'
-import { isDashboardVisible, isCurrentlyActive, isOverdueNow, sortDashboardTasks } from '../utils/taskUtils'
+import { isDashboardVisible, isCurrentlyActive, isOverdueNow, sortDashboardTasks, getSubtasks } from '../utils/taskUtils'
 import TaskCard from './TaskCard'
+import GoalCard from './GoalCard'
 import QuickAdd from './QuickAdd'
 
 export default function Dashboard({ tasks, locations = [], onEdit, onComplete, onDelete, onQuickSave }) {
   const [locationFilter, setLocationFilter] = useState(null) // null = All
 
+  // Ids of tasks that are goals (have ≥1 sub-task).
+  const goalIdSet = new Set(tasks.filter(t => t.parent_id).map(t => t.parent_id))
+
+  // Goals to show: has children, still open, and is not itself a sub-task of another goal.
+  let goals = tasks.filter(t =>
+    goalIdSet.has(t.id) && !t.parent_id && t.status !== 'completed' && t.status !== 'cancelled'
+  )
+  if (locationFilter) {
+    goals = goals.filter(g =>
+      g.location_id === locationFilter ||
+      getSubtasks(g, tasks).some(s => s.location_id === locationFilter)
+    )
+  }
+
   const visible = tasks.filter(t => isDashboardVisible(t, tasks))
 
-  const filtered = locationFilter
+  const filtered = (locationFilter
     ? visible.filter(t => t.location_id === locationFilter)
     : visible
+  ).filter(t => !t.parent_id && !goalIdSet.has(t.id)) // sub-tasks + goals live in the Goals section
 
   const overdue  = sortDashboardTasks(filtered.filter(t => isOverdueNow(t)))
   const current  = sortDashboardTasks(filtered.filter(t => !isOverdueNow(t) && isCurrentlyActive(t)))
   const upcoming = sortDashboardTasks(filtered.filter(t => !isOverdueNow(t) && !isCurrentlyActive(t)))
 
-  const total = overdue.length + current.length + upcoming.length
+  const total = goals.length + overdue.length + current.length + upcoming.length
 
   // Only show locations that have visible tasks
   const activeLocations = locations.filter(loc =>
@@ -66,6 +82,14 @@ export default function Dashboard({ tasks, locations = [], onEdit, onComplete, o
         </div>
       )}
 
+      {goals.length > 0 && (
+        <Section title="Goals" count={goals.length} accent="indigo" subtitle="Multi-step">
+          {goals.map(g => (
+            <GoalCard key={g.id} goal={g} tasks={tasks} locations={locations} onEdit={onEdit} onComplete={onComplete} onDelete={onDelete} />
+          ))}
+        </Section>
+      )}
+
       {overdue.length > 0 && (
         <Section title="Overdue" count={overdue.length} accent="red" subtitle="Missed time window">
           {overdue.map(t => (
@@ -110,9 +134,10 @@ function FilterChip({ active, onClick, children }) {
 
 function Section({ title, count, accent, dot, subtitle, children }) {
   const badge = {
-    red:   'text-red-700 bg-red-50 border-red-200',
-    blue:  'text-blue-700 bg-blue-50 border-blue-200',
-    slate: 'text-slate-600 bg-slate-100 border-slate-200',
+    red:    'text-red-700 bg-red-50 border-red-200',
+    blue:   'text-blue-700 bg-blue-50 border-blue-200',
+    slate:  'text-slate-600 bg-slate-100 border-slate-200',
+    indigo: 'text-indigo-700 bg-indigo-50 border-indigo-200',
   }
   return (
     <div>

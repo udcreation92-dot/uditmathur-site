@@ -21,6 +21,7 @@ const DEFAULT_FORM = {
   yearly_month: '1',
   yearly_day: '1',
   prerequisite_ids: [],
+  parent_id: '',
   status: 'pending',
 }
 
@@ -52,6 +53,7 @@ function toForm(task) {
     yearly_month: String(rec.month || 1),
     yearly_day: String(rec.day || 1),
     prerequisite_ids: task.prerequisite_ids || [],
+    parent_id: task.parent_id || '',
     status: task.status || 'pending',
     location_id: task.location_id || '',
   }
@@ -69,6 +71,12 @@ export default function TaskForm({ task, tasks, locations = [], onClose, onSave 
   // linked prerequisite is kept even if it no longer appears here (it stays in form state).
   const prereqOptions = tasks.filter(t =>
     t.id !== task?.id && t.status !== 'cancelled' && t.status !== 'completed'
+  )
+
+  // Eligible goals to nest this task under: any non-cancelled task except itself and
+  // its own direct sub-tasks (prevents the obvious cycles).
+  const parentOptions = tasks.filter(t =>
+    t.id !== task?.id && t.status !== 'cancelled' && t.parent_id !== task?.id
   )
 
   function set(key, value) {
@@ -131,6 +139,7 @@ export default function TaskForm({ task, tasks, locations = [], onClose, onSave 
       is_recurring: form.is_recurring,
       recurrence,
       prerequisite_ids: form.prerequisite_ids,
+      parent_id: form.parent_id || null,
       status: form.status,
       location_id: form.location_id || null,
     }
@@ -341,6 +350,22 @@ export default function TaskForm({ task, tasks, locations = [], onClose, onSave 
                 <option value="in_progress">In Progress</option>
                 <option value="completed">Completed</option>
                 <option value="cancelled">Cancelled</option>
+              </select>
+            </Field>
+          )}
+
+          {/* Part of a goal (parent task) */}
+          {parentOptions.length > 0 && (
+            <Field label="Part of goal (optional)">
+              <select
+                value={form.parent_id}
+                onChange={e => set('parent_id', e.target.value)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+              >
+                <option value="">— None (standalone task) —</option>
+                {parentOptions.map(t => (
+                  <option key={t.id} value={t.id}>{t.title}</option>
+                ))}
               </select>
             </Field>
           )}

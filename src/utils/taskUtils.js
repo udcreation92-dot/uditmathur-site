@@ -74,6 +74,28 @@ export function isRecurringMissed(task) {
   return true
 }
 
+// ---- Goals / sub-tasks -------------------------------------------------------
+// A "goal" is any task that has at least one sub-task (child pointing to it via parent_id).
+
+export function getSubtasks(task, allTasks) {
+  return allTasks.filter(t => t.parent_id === task.id)
+}
+
+export function isGoal(task, allTasks) {
+  return allTasks.some(t => t.parent_id === task.id)
+}
+
+export function isSubtask(task) {
+  return !!task.parent_id
+}
+
+// { done, total } across a goal's sub-tasks (ignoring cancelled ones).
+export function goalProgress(task, allTasks) {
+  const subs = getSubtasks(task, allTasks).filter(t => t.status !== 'cancelled')
+  const done = subs.filter(t => t.status === 'completed').length
+  return { done, total: subs.length }
+}
+
 export function isTaskDoneForToday(task) {
   if (!task) return false
   if (task.is_recurring) {
