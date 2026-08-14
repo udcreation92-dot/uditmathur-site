@@ -140,6 +140,7 @@ const EMPTY = {
   recur_weekday:  '0',
   recur_weekday2: '1',
   recur_month:    '0',
+  reminder_lead_days: '',
 }
 
 // ─── main page ────────────────────────────────────────────────────────────────
@@ -217,6 +218,8 @@ export default function Commitments() {
       commitment_type: form.type,
       due_date:        form.type === 'one_time' ? form.due_date : null,
       recurrence:      rec,
+      reminder_lead_days:
+        form.reminder_lead_days === '' ? null : Math.max(0, parseInt(form.reminder_lead_days, 10) || 0),
     })
     if (error) {
       toast.error(error.message)
@@ -226,6 +229,19 @@ export default function Commitments() {
       setShowForm(false)
       load()
     }
+  }
+
+  // Reminder lead days → drives a task in the Task app (start_date = due − lead).
+  // Blank clears it (no task reminder).
+  async function saveLead(c, raw) {
+    const days = raw === '' ? null : Math.max(0, parseInt(raw, 10) || 0)
+    if (days === (c.reminder_lead_days ?? null)) return
+    const { error } = await supabase
+      .from('commitments')
+      .update({ reminder_lead_days: days })
+      .eq('id', c.id)
+    if (error) toast.error(error.message)
+    else { toast.success(days == null ? 'Reminder cleared' : `Reminder set: ${days}d before due`); load() }
   }
 
   async function toggleActive(c) {
@@ -354,6 +370,21 @@ export default function Commitments() {
                 ))}
               </div>
             </div>
+          </div>
+
+          {/* Task reminder */}
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-gray-600">🔔 Start reminder</span>
+            <input
+              className="input w-20 text-center"
+              type="number"
+              min="0"
+              placeholder="—"
+              value={form.reminder_lead_days}
+              onChange={e => setForm(f => ({ ...f, reminder_lead_days: e.target.value }))}
+            />
+            <span className="text-gray-600">days before due date</span>
+            <span className="text-xs text-gray-400">(creates a task in the Task app · leave blank for none)</span>
           </div>
 
           {/* One-time: due date */}
@@ -495,6 +526,7 @@ export default function Commitments() {
               <th className="table-head">Account / Book</th>
               <th className="table-head text-right">Amount</th>
               <th className="table-head">Schedule</th>
+              <th className="table-head">Reminder</th>
               <th className="table-head">Next Due</th>
               <th className="table-head">Status</th>
               <th className="table-head w-8" />
@@ -503,7 +535,7 @@ export default function Commitments() {
           <tbody className="divide-y divide-gray-100">
             {commitments.length === 0 && (
               <tr>
-                <td colSpan={7} className="table-cell text-center text-gray-400 py-8">
+                <td colSpan={8} className="table-cell text-center text-gray-400 py-8">
                   No commitments yet — add your first scheduled payment above.
                 </td>
               </tr>
@@ -531,6 +563,24 @@ export default function Commitments() {
                     {c.commitment_type === 'one_time'
                       ? `One-time`
                       : describeRecurrence(c.recurrence)}
+                  </td>
+                  <td className="table-cell text-sm">
+                    <div className="flex items-center gap-1">
+                      <input
+                        key={`lead-${c.id}-${c.reminder_lead_days ?? ''}`}
+                        type="number"
+                        min="0"
+                        defaultValue={c.reminder_lead_days ?? ''}
+                        placeholder="—"
+                        title="Days before due to start a task reminder in the Task app. Blank = no task."
+                        className="input w-14 text-center py-1"
+                        onBlur={e => saveLead(c, e.target.value.trim())}
+                        onKeyDown={e => { if (e.key === 'Enter') e.target.blur() }}
+                      />
+                      {c.reminder_lead_days != null && (
+                        <span className="text-[11px] text-gray-400">d</span>
+                      )}
+                    </div>
                   </td>
                   <td className="table-cell text-sm">
                     {nextDue ? (
