@@ -14,7 +14,7 @@ const DEFAULT_FORM = {
   due_date: '',
   duration_hours: '',
   duration_minutes_extra: '',
-  location_id: '',
+  location_ids: [],
   due_time: '',
   is_recurring: false,
   freq: 'daily',
@@ -57,7 +57,7 @@ function toForm(task, defaultParentId) {
     prerequisite_ids: task.prerequisite_ids || [],
     parent_id: task.parent_id || '',
     status: task.status || 'pending',
-    location_id: task.location_id || '',
+    location_ids: (task.location_ids && task.location_ids.length) ? task.location_ids : (task.location_id ? [task.location_id] : []),
     due_time: task.due_time ? task.due_time.slice(0, 5) : '',
   }
 }
@@ -144,7 +144,8 @@ export default function TaskForm({ task, tasks, locations = [], defaultParentId,
       prerequisite_ids: form.prerequisite_ids,
       parent_id: form.parent_id || null,
       status: form.status,
-      location_id: form.location_id || null,
+      location_ids: form.location_ids,
+      location_id: form.location_ids[0] || null, // legacy mirror
       due_time: form.due_time || null,
     }
 
@@ -194,15 +195,27 @@ export default function TaskForm({ task, tasks, locations = [], defaultParentId,
             />
           </Field>
 
-          {/* Location — where the task is done (drives the "I'm at X" presence view). */}
+          {/* Location(s) — where the task can be done. Pick one or more (drives the
+              "I'm at X" presence view). None selected = Anywhere. */}
           {locations.length > 0 && (
-            <Field label="Location — कहाँ का काम है?">
-              <select className="input" value={form.location_id} onChange={e => set('location_id', e.target.value)}>
-                <option value="">Anywhere (no location)</option>
-                {locations.map(loc => (
-                  <option key={loc.id} value={loc.id}>{loc.name}</option>
-                ))}
-              </select>
+            <Field label="Location(s) — कहाँ का काम है?">
+              <div className="flex gap-2 flex-wrap">
+                {locations.map(loc => {
+                  const on = form.location_ids.includes(loc.id)
+                  return (
+                    <button
+                      key={loc.id} type="button"
+                      onClick={() => set('location_ids', on ? form.location_ids.filter(id => id !== loc.id) : [...form.location_ids, loc.id])}
+                      className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                        on ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-slate-600 border-slate-200 hover:border-teal-400'
+                      }`}
+                    >
+                      📍 {loc.name}
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-xs text-slate-400 mt-1">{form.location_ids.length === 0 ? 'None selected = Anywhere (shows at every location)' : 'Shows when you’re at any of these'}</p>
             </Field>
           )}
 

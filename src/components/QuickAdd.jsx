@@ -39,6 +39,7 @@ export default function QuickAdd({ locations = [], onSaved }) {
       prerequisite_ids: [],
       status: 'pending',
       location_id,
+      location_ids: location_id ? [location_id] : [],
     }
     const { error } = await supabase.from('tasks').insert(payload)
     setSaving(false)

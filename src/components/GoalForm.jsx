@@ -72,6 +72,7 @@ export default function GoalForm({ tasks = [], locations = [], onClose, onSaved 
         start_time: s.start_time || null, end_time: s.end_time || null,
         duration_minutes: s.duration_minutes || 0,
         location_id: s.location_id || null,
+        location_ids: s.location_id ? [s.location_id] : [],
       }).select('id').single()
       if (ce) { setError(ce.message); setSaving(false); return }
       uidToId[s.uid] = child.id

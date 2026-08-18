@@ -206,12 +206,20 @@ export function dueDateTime(task) {
   return d
 }
 
+// A task's location ids (multi-location). Falls back to the legacy single location_id.
+// Empty array = "anywhere".
+export function taskLocationIds(task) {
+  if (Array.isArray(task.location_ids) && task.location_ids.length) return task.location_ids
+  return task.location_id ? [task.location_id] : []
+}
+
 // Presence: does this task belong to where I am right now?
 // currentLocationId null/undefined = no location chosen -> everything matches (no filter).
-// Otherwise: tasks at that location, plus location-less "anywhere" tasks.
+// Otherwise: tasks whose location set INCLUDES it, plus location-less "anywhere" tasks.
 export function matchesLocation(task, currentLocationId) {
   if (!currentLocationId) return true
-  return task.location_id === currentLocationId || !task.location_id
+  const locs = taskLocationIds(task)
+  return locs.length === 0 || locs.includes(currentLocationId)
 }
 
 // Task has an availability window that hasn't opened yet today.

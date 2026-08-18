@@ -1,5 +1,5 @@
 import { format, parseISO } from 'date-fns'
-import { getSubtasks, goalProgress, isTaskDoneForToday, prerequisitesMet, formatTime } from '../utils/taskUtils'
+import { getSubtasks, goalProgress, isTaskDoneForToday, prerequisitesMet, formatTime, taskLocationIds } from '../utils/taskUtils'
 
 // Compact goal overview: progress bar + the full step list (including future/blocked steps
 // that aren't in today's matrix yet). The actual prioritised, actionable copies of these
@@ -45,7 +45,7 @@ export default function GoalCard({ goal, tasks, locations = [], onEdit, onComple
         {ordered.map(t => {
           const isDone = isTaskDoneForToday(t)
           const blocked = !isDone && !prerequisitesMet(t, tasks)
-          const location = locations.find(l => l.id === t.location_id)
+          const locName = taskLocationIds(t).map(id => locations.find(l => l.id === id)?.name).filter(Boolean).join(', ')
           const timeRange = t.start_time && t.end_time ? `${formatTime(t.start_time)}–${formatTime(t.end_time)}` : null
           return (
             <div key={t.id} className="flex items-center gap-2.5 px-4 py-2">
@@ -63,7 +63,7 @@ export default function GoalCard({ goal, tasks, locations = [], onEdit, onComple
               <button onClick={() => onEdit(t)} className="flex-1 min-w-0 text-left">
                 <span className={`text-sm ${isDone ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{t.title}</span>
                 <span className="ml-2 text-xs text-slate-400 whitespace-nowrap">
-                  {location ? `📍${location.name} ` : ''}{timeRange || ''}
+                  {locName ? `📍${locName} ` : ''}{timeRange || ''}
                   {blocked && <span className="text-orange-500"> · waiting</span>}
                 </span>
               </button>

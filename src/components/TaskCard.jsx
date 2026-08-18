@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { format, parseISO, startOfDay, isAfter } from 'date-fns'
-import { formatTime, formatDuration, getRecurrenceLabel, isTaskDoneForToday } from '../utils/taskUtils'
+import { formatTime, formatDuration, getRecurrenceLabel, isTaskDoneForToday, taskLocationIds } from '../utils/taskUtils'
 
 export default function TaskCard({ task, tasks, locations = [], bucket, nested = false, onComplete, onEdit, onDelete }) {
   const today = startOfDay(new Date())
@@ -14,7 +14,7 @@ export default function TaskCard({ task, tasks, locations = [], bucket, nested =
   const unmetPrereqs = prereqTasks.filter(t => !isTaskDoneForToday(t))
   const isBlocked = unmetPrereqs.length > 0
 
-  const location = locations.find(l => l.id === task.location_id)
+  const taskLocs = taskLocationIds(task).map(id => locations.find(l => l.id === id)).filter(Boolean)
 
   const timeRange = task.start_time && task.end_time
     ? `${formatTime(task.start_time)} – ${formatTime(task.end_time)}`
@@ -51,7 +51,7 @@ export default function TaskCard({ task, tasks, locations = [], bucket, nested =
             {task.is_recurring && (
               <Badge color="purple">↻ {getRecurrenceLabel(task.recurrence)}</Badge>
             )}
-            {location && <Badge color="teal">📍 {location.name}</Badge>}
+            {taskLocs.map(l => <Badge key={l.id} color="teal">📍 {l.name}</Badge>)}
             {isOverdue && !isDone && <Badge color="red">Overdue</Badge>}
             {isBlocked && !isDone && <Badge color="orange">Blocked</Badge>}
             {task.status === 'in_progress' && <Badge color="blue">In Progress</Badge>}

@@ -1,4 +1,4 @@
-import { isDashboardVisible, isOverdueNow, dueDateTime, formatTime } from '../utils/taskUtils'
+import { isDashboardVisible, isOverdueNow, dueDateTime, formatTime, taskLocationIds } from '../utils/taskUtils'
 
 // Always-on overview: per location, how many tasks are waiting there (due = started &
 // not overdue), how many are overdue, and the nearest deadline. Tap a location to
@@ -12,13 +12,14 @@ export default function LocationOverview({ tasks, locations = [], currentLocatio
     const list = inPlay.filter(predicate)
     const overdue = list.filter(isOverdueNow)
     const due = list.filter(t => !isOverdueNow(t))
-    const deadlines = list.map(dueDateTime).filter(Boolean).sort((a, b) => a - b)
+    // Nearest deadline ignores recurring tasks (their due_date is not a real one-off deadline).
+    const deadlines = list.filter(t => !t.is_recurring).map(dueDateTime).filter(Boolean).sort((a, b) => a - b)
     return { total: list.length, overdue: overdue.length, due: due.length, nearest: deadlines[0] || null }
   }
 
-  const anywhere = statsFor(t => !t.location_id)
+  const anywhere = statsFor(t => taskLocationIds(t).length === 0)
   const rows = locations
-    .map(loc => ({ loc, s: statsFor(t => t.location_id === loc.id) }))
+    .map(loc => ({ loc, s: statsFor(t => taskLocationIds(t).includes(loc.id)) }))
     .filter(r => r.s.total > 0)
     // most urgent first: overdue, then soonest deadline, then most tasks
     .sort((a, b) => (b.s.overdue - a.s.overdue)
