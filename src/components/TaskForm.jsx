@@ -113,6 +113,10 @@ export default function TaskForm({ task, tasks, locations = [], defaultParentId,
         case 'daily':
           recurrence = { frequency: 'daily' }
           break
+        case 'alternate':
+          // Every other day, counted from the start date (or today if unset).
+          recurrence = { frequency: 'alternate', anchor: form.start_date || new Date().toISOString().slice(0, 10) }
+          break
         case 'weekly':
           recurrence = { frequency: 'weekly', days: form.weekly_days }
           break
@@ -284,6 +288,7 @@ export default function TaskForm({ task, tasks, locations = [], defaultParentId,
               <Field label="Frequency">
                 <select className="input" value={form.freq} onChange={e => set('freq', e.target.value)}>
                   <option value="daily">Daily</option>
+                  <option value="alternate">Alternate day (every other day)</option>
                   <option value="weekly">Weekly</option>
                   <option value="monthly">Monthly</option>
                   <option value="yearly">Yearly</option>

@@ -13,6 +13,14 @@ export function isRecurringTaskDue(task) {
   // Check if today is a scheduled day (no time check — time handled by isCurrentlyActive/isOverdueNow)
   switch (rec.frequency) {
     case 'daily':   return true
+    case 'alternate': {
+      // Every other day from the anchor (start date). Due on days with even offset.
+      if (!rec.anchor) return true
+      const anchor = startOfDay(parseISO(rec.anchor))
+      const today = startOfDay(now)
+      if (isAfter(anchor, today)) return false
+      return Math.round((today - anchor) / 86400000) % 2 === 0
+    }
     case 'weekly':  return (rec.days || []).includes(now.getDay())
     case 'monthly': return now.getDate() === rec.day
     case 'yearly':  return now.getMonth() + 1 === rec.month && now.getDate() === rec.day
@@ -30,6 +38,15 @@ function lastScheduledOccurrence(task) {
   switch (rec.frequency) {
     case 'daily':
       return today
+    case 'alternate': {
+      const anchor = rec.anchor ? startOfDay(parseISO(rec.anchor)) : today
+      if (isAfter(anchor, today)) return null
+      const diff = Math.round((today - anchor) / 86400000)
+      const back = diff % 2 === 0 ? 0 : 1 // if today isn't an "on" day, the last one was yesterday
+      const d = new Date(today)
+      d.setDate(today.getDate() - back)
+      return startOfDay(d)
+    }
     case 'weekly': {
       const days = rec.days || []
       if (!days.length) return null
@@ -248,6 +265,7 @@ export function getRecurrenceLabel(recurrence) {
   if (!recurrence) return 'Recurring'
   switch (recurrence.frequency) {
     case 'daily': return 'Daily'
+    case 'alternate': return 'Every other day'
     case 'weekly': return `Weekly · ${(recurrence.days || []).map(d => DAYS[d]).join(', ')}`
     case 'monthly': return `Monthly · ${ordinal(recurrence.day)}`
     case 'yearly': return `Yearly · ${MONTHS[(recurrence.month || 1) - 1]} ${recurrence.day}`
