@@ -15,6 +15,8 @@ const DEFAULT_FORM = {
   duration_hours: '',
   duration_minutes_extra: '',
   location_id: '',
+  context: '',
+  fixed_time: false,
   is_recurring: false,
   freq: 'daily',
   weekly_days: [],
@@ -57,6 +59,8 @@ function toForm(task, defaultParentId) {
     parent_id: task.parent_id || '',
     status: task.status || 'pending',
     location_id: task.location_id || '',
+    context: task.context || '',
+    fixed_time: task.fixed_time || false,
   }
 }
 
@@ -143,6 +147,8 @@ export default function TaskForm({ task, tasks, locations = [], defaultParentId,
       parent_id: form.parent_id || null,
       status: form.status,
       location_id: form.location_id || null,
+      context: form.fixed_time ? null : (form.context || null), // fixed-time tasks carry no context
+      fixed_time: form.fixed_time,
     }
 
     const { error: dbError } = isEdit
@@ -202,6 +208,31 @@ export default function TaskForm({ task, tasks, locations = [], defaultParentId,
               </select>
             </Field>
           )}
+
+          {/* Context (कहाँ का काम है) — drives day-plan scheduling. Hidden for fixed-time tasks. */}
+          {!form.fixed_time && (
+            <Field label="Context — कहाँ का काम है?">
+              <select className="input" value={form.context} onChange={e => set('context', e.target.value)}>
+                <option value="">— None (कोई नहीं) —</option>
+                <option value="office">Office</option>
+                <option value="home">घर (Home)</option>
+                <option value="car">Car / बाहर</option>
+                <option value="papa_office">Papa office</option>
+              </select>
+            </Field>
+          )}
+
+          {/* Fixed-time toggle: time is fixed, no context, day-plan never reschedules it */}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => set('fixed_time', !form.fixed_time)}
+              className={`w-10 h-6 rounded-full transition-colors relative ${form.fixed_time ? 'bg-amber-500' : 'bg-slate-200'}`}
+            >
+              <span className={`block w-4 h-4 bg-white rounded-full shadow absolute top-1 transition-transform ${form.fixed_time ? 'left-5' : 'left-1'}`} />
+            </button>
+            <span className="text-sm font-medium text-slate-700">Fixed time — दिनचर्या से न बदले</span>
+          </div>
 
           {/* Dates */}
           <div className="grid grid-cols-2 gap-3">
