@@ -15,7 +15,6 @@ const DEFAULT_FORM = {
   duration_hours: '',
   duration_minutes_extra: '',
   location_id: '',
-  context: '',
   fixed_time: false,
   is_recurring: false,
   freq: 'daily',
@@ -59,7 +58,6 @@ function toForm(task, defaultParentId) {
     parent_id: task.parent_id || '',
     status: task.status || 'pending',
     location_id: task.location_id || '',
-    context: task.context || '',
     fixed_time: task.fixed_time || false,
   }
 }
@@ -146,8 +144,7 @@ export default function TaskForm({ task, tasks, locations = [], defaultParentId,
       prerequisite_ids: form.prerequisite_ids,
       parent_id: form.parent_id || null,
       status: form.status,
-      location_id: form.location_id || null,
-      context: form.fixed_time ? null : (form.context || null), // fixed-time tasks carry no context
+      location_id: form.fixed_time ? null : (form.location_id || null), // fixed-time tasks carry no location
       fixed_time: form.fixed_time,
     }
 
@@ -197,9 +194,9 @@ export default function TaskForm({ task, tasks, locations = [], defaultParentId,
             />
           </Field>
 
-          {/* Location */}
-          {locations.length > 0 && (
-            <Field label="Location">
+          {/* Location — drives day-plan scheduling. Hidden for fixed-time tasks. */}
+          {!form.fixed_time && locations.length > 0 && (
+            <Field label="Location — कहाँ का काम है?">
               <select className="input" value={form.location_id} onChange={e => set('location_id', e.target.value)}>
                 <option value="">No location</option>
                 {locations.map(loc => (
@@ -209,20 +206,7 @@ export default function TaskForm({ task, tasks, locations = [], defaultParentId,
             </Field>
           )}
 
-          {/* Context (कहाँ का काम है) — drives day-plan scheduling. Hidden for fixed-time tasks. */}
-          {!form.fixed_time && (
-            <Field label="Context — कहाँ का काम है?">
-              <select className="input" value={form.context} onChange={e => set('context', e.target.value)}>
-                <option value="">— None (कोई नहीं) —</option>
-                <option value="office">Office</option>
-                <option value="home">घर (Home)</option>
-                <option value="car">Car / बाहर</option>
-                <option value="papa_office">Papa office</option>
-              </select>
-            </Field>
-          )}
-
-          {/* Fixed-time toggle: time is fixed, no context, day-plan never reschedules it */}
+          {/* Fixed-time toggle: time is fixed, no location, day-plan never reschedules it */}
           <div className="flex items-center gap-3">
             <button
               type="button"
