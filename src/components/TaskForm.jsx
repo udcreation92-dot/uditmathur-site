@@ -15,7 +15,7 @@ const DEFAULT_FORM = {
   duration_hours: '',
   duration_minutes_extra: '',
   location_id: '',
-  fixed_time: false,
+  due_time: '',
   is_recurring: false,
   freq: 'daily',
   weekly_days: [],
@@ -58,7 +58,7 @@ function toForm(task, defaultParentId) {
     parent_id: task.parent_id || '',
     status: task.status || 'pending',
     location_id: task.location_id || '',
-    fixed_time: task.fixed_time || false,
+    due_time: task.due_time ? task.due_time.slice(0, 5) : '',
   }
 }
 
@@ -144,8 +144,8 @@ export default function TaskForm({ task, tasks, locations = [], defaultParentId,
       prerequisite_ids: form.prerequisite_ids,
       parent_id: form.parent_id || null,
       status: form.status,
-      location_id: form.fixed_time ? null : (form.location_id || null), // fixed-time tasks carry no location
-      fixed_time: form.fixed_time,
+      location_id: form.location_id || null,
+      due_time: form.due_time || null,
     }
 
     const { error: dbError } = isEdit
@@ -194,11 +194,11 @@ export default function TaskForm({ task, tasks, locations = [], defaultParentId,
             />
           </Field>
 
-          {/* Location — drives day-plan scheduling. Hidden for fixed-time tasks. */}
-          {!form.fixed_time && locations.length > 0 && (
+          {/* Location — where the task is done (drives the "I'm at X" presence view). */}
+          {locations.length > 0 && (
             <Field label="Location — कहाँ का काम है?">
               <select className="input" value={form.location_id} onChange={e => set('location_id', e.target.value)}>
-                <option value="">No location</option>
+                <option value="">Anywhere (no location)</option>
                 {locations.map(loc => (
                   <option key={loc.id} value={loc.id}>{loc.name}</option>
                 ))}
@@ -206,25 +206,16 @@ export default function TaskForm({ task, tasks, locations = [], defaultParentId,
             </Field>
           )}
 
-          {/* Fixed-time toggle: time is fixed, no location, day-plan never reschedules it */}
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => set('fixed_time', !form.fixed_time)}
-              className={`w-10 h-6 rounded-full transition-colors relative ${form.fixed_time ? 'bg-amber-500' : 'bg-slate-200'}`}
-            >
-              <span className={`block w-4 h-4 bg-white rounded-full shadow absolute top-1 transition-transform ${form.fixed_time ? 'left-5' : 'left-1'}`} />
-            </button>
-            <span className="text-sm font-medium text-slate-700">Fixed time — दिनचर्या से न बदले</span>
-          </div>
-
-          {/* Dates */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* Dates + deadline time */}
+          <div className="grid grid-cols-3 gap-3">
             <Field label="Start Date">
               <input type="date" className="input" value={form.start_date} onChange={e => set('start_date', e.target.value)} />
             </Field>
             <Field label="Due Date">
               <input type="date" className="input" value={form.due_date} onChange={e => set('due_date', e.target.value)} />
+            </Field>
+            <Field label="Due Time">
+              <input type="time" className="input" value={form.due_time} onChange={e => set('due_time', e.target.value)} />
             </Field>
           </div>
 
@@ -236,20 +227,24 @@ export default function TaskForm({ task, tasks, locations = [], defaultParentId,
             <Chip onClick={() => set('due_date', form.start_date)}>Due = start</Chip>
           </div>
 
-          {/* Time frame */}
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Start Time">
-              <input type="time" className="input" value={form.start_time} onChange={e => set('start_time', e.target.value)} />
-            </Field>
-            <Field label="End Time (deadline)">
-              <input type="time" className="input" value={form.end_time} onChange={e => set('end_time', e.target.value)} />
-            </Field>
+          {/* Availability window (OPTIONAL): only show/do this task within this clock-time
+              window when you're at its location. Blank = open whenever you're there. */}
+          <div>
+            <p className="text-xs text-slate-500 mb-1">Availability window <span className="text-slate-400">(optional — only do it between these times; blank = anytime you're there)</span></p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="From">
+                <input type="time" className="input" value={form.start_time} onChange={e => set('start_time', e.target.value)} />
+              </Field>
+              <Field label="To">
+                <input type="time" className="input" value={form.end_time} onChange={e => set('end_time', e.target.value)} />
+              </Field>
+            </div>
           </div>
 
-          {/* Time preset chips */}
+          {/* Window preset chips */}
           <div className="flex gap-2 flex-wrap -mt-1">
             <Chip onClick={() => { set('start_time', '09:00'); set('end_time', '12:00') }}>9–12</Chip>
-            <Chip onClick={() => { set('start_time', '14:00'); set('end_time', '17:00') }}>2–5</Chip>
+            <Chip onClick={() => { set('start_time', '12:00'); set('end_time', '17:00') }}>12–5</Chip>
             <Chip onClick={() => { set('start_time', ''); set('end_time', '') }}>Clear</Chip>
           </div>
 

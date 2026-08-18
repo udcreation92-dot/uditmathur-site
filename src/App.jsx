@@ -16,6 +16,7 @@ export default function App() {
   const [view, setView] = useState('dashboard')
   const [tasks, setTasks] = useState([])
   const [locations, setLocations] = useState([])
+  const [currentLocationId, setCurrentLocationId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [editTask, setEditTask] = useState(null)
   const [showForm, setShowForm] = useState(false)
@@ -44,7 +45,7 @@ export default function App() {
       clearTimeout(timeout)
       setSession(session)
       setAuthChecked(true)
-      if (session) { fetchTasks(); fetchLocations() }
+      if (session) { fetchTasks(); fetchLocations(); fetchAppState() }
       else setLoading(false)
     }).catch(() => {
       clearTimeout(timeout)
@@ -55,7 +56,7 @@ export default function App() {
     // Listen for login/logout
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
-      if (session) { fetchTasks(); fetchLocations() }
+      if (session) { fetchTasks(); fetchLocations(); fetchAppState() }
       else { setTasks([]); setLocations([]) }
     })
 
@@ -63,6 +64,7 @@ export default function App() {
       .channel('tasks-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, fetchTasks)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'locations' }, fetchLocations)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'app_state' }, fetchAppState)
       .subscribe()
 
     return () => { subscription.unsubscribe(); supabase.removeChannel(channel) }
@@ -83,6 +85,20 @@ export default function App() {
       .select('*')
       .order('name', { ascending: true })
     if (data) setLocations(data)
+  }
+
+  async function fetchAppState() {
+    const { data } = await supabase.from('app_state').select('value').eq('key', 'current_location_id').maybeSingle()
+    setCurrentLocationId(data?.value || null)
+  }
+
+  // "I'm at X" — set (or clear, when locId is null) the current location.
+  async function arriveAt(locId) {
+    setCurrentLocationId(locId)
+    await supabase.from('app_state').upsert(
+      { key: 'current_location_id', value: locId || '', updated_at: new Date().toISOString() },
+      { onConflict: 'key' },
+    )
   }
 
   function openAdd(parentId = null) { setEditTask(null); setAddParentId(typeof parentId === 'string' ? parentId : null); setShowForm(true) }
@@ -161,7 +177,7 @@ export default function App() {
             Loading…
           </div>
         ) : view === 'dashboard' ? (
-          <Dashboard {...cardProps} onQuickSave={fetchTasks} onAddGoal={() => setShowGoalForm(true)} onAddStep={openAdd} />
+          <Dashboard {...cardProps} currentLocationId={currentLocationId} onArrive={arriveAt} onQuickSave={fetchTasks} onAddGoal={() => setShowGoalForm(true)} onAddStep={openAdd} />
         ) : view === 'goals' ? (
           <GoalsPanel {...cardProps} onAddGoal={() => setShowGoalForm(true)} onAddStep={openAdd} />
         ) : view === 'all' ? (

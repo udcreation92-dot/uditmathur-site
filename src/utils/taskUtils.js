@@ -183,23 +183,41 @@ export function isOverdueNow(task) {
     return false
   }
 
-  // Non-recurring with a due date: overdue requires the DEADLINE DATE to have arrived.
-  // A future due date is never overdue, even if today's end_time has already passed.
+  // Non-recurring with a due date: overdue once the DEADLINE (due_date + due_time) passes.
+  // due_time defaults to end of day, so a due date with no time is overdue only next day.
   if (task.due_date) {
     const due = startOfDay(parseISO(task.due_date))
     if (isAfter(due, today)) return false                 // deadline still in the future
     if (isAfter(today, due)) return true                  // deadline date fully passed
-    // Deadline is today -> overdue only once the end_time has passed.
-    if (task.start_time && task.end_time) return cur > toMins(task.end_time)
+    // Deadline is today -> overdue once the due_time has passed (default end of day).
+    if (task.due_time) return cur > toMins(task.due_time)
     return false
   }
 
-  // No due date: fall back to today's time window.
-  if (task.start_time && task.end_time) {
-    return cur > toMins(task.end_time)
-  }
-
   return false
+}
+
+// The deadline as a Date (due_date at due_time, default 23:59). Null if no due date.
+export function dueDateTime(task) {
+  if (!task.due_date) return null
+  const d = parseISO(task.due_date)
+  const [h, m] = (task.due_time || '23:59').split(':').map(Number)
+  d.setHours(h, m, 0, 0)
+  return d
+}
+
+// Presence: does this task belong to where I am right now?
+// currentLocationId null/undefined = no location chosen -> everything matches (no filter).
+// Otherwise: tasks at that location, plus location-less "anywhere" tasks.
+export function matchesLocation(task, currentLocationId) {
+  if (!currentLocationId) return true
+  return task.location_id === currentLocationId || !task.location_id
+}
+
+// Task has an availability window that hasn't opened yet today.
+export function windowStartsLaterToday(task) {
+  if (!task.start_time) return false
+  return getCurrentMins() < toMins(task.start_time)
 }
 
 // The window of time in which a task CAN be done (end_time - start_time), in minutes.
@@ -219,18 +237,18 @@ export function sortDashboardTasks(tasks) {
     const wa = windowMins(a), wb = windowMins(b)
     if (wa !== wb) return wa - wb
 
-    // 3. Shortest duration first (quick wins)
-    const durDiff = (a.duration_minutes || 0) - (b.duration_minutes || 0)
-    if (durDiff !== 0) return durDiff
-
-    // 4. Closest due date first
-    const aDate = a.due_date ? parseISO(a.due_date) : null
-    const bDate = b.due_date ? parseISO(b.due_date) : null
+    // 3. Closest deadline first (due_date + due_time)
+    const aDate = dueDateTime(a)
+    const bDate = dueDateTime(b)
     if (aDate && bDate) {
       if (aDate < bDate) return -1
       if (aDate > bDate) return 1
     } else if (aDate) return -1
     else if (bDate) return 1
+
+    // 4. Shortest duration first (quick wins) — tiebreaker
+    const durDiff = (a.duration_minutes || 0) - (b.duration_minutes || 0)
+    if (durDiff !== 0) return durDiff
 
     return 0
   })
