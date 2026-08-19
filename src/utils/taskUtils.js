@@ -241,11 +241,7 @@ export function sortDashboardTasks(tasks) {
     // 1. Recurring first
     if (a.is_recurring !== b.is_recurring) return a.is_recurring ? -1 : 1
 
-    // 2. Shortest available window first (a tight start–end slot must be slotted first)
-    const wa = windowMins(a), wb = windowMins(b)
-    if (wa !== wb) return wa - wb
-
-    // 3. Closest deadline first (due_date + due_time)
+    // 2. Closest deadline first (due_date + due_time) — deadline drives priority
     const aDate = dueDateTime(a)
     const bDate = dueDateTime(b)
     if (aDate && bDate) {
@@ -254,7 +250,11 @@ export function sortDashboardTasks(tasks) {
     } else if (aDate) return -1
     else if (bDate) return 1
 
-    // 4. Shortest duration first (quick wins) — tiebreaker
+    // 3. Tighter availability window next (a narrow start–end slot should surface sooner)
+    const wa = windowMins(a), wb = windowMins(b)
+    if (wa !== wb) return wa - wb
+
+    // 4. Shortest duration first (quick wins) — final tiebreaker
     const durDiff = (a.duration_minutes || 0) - (b.duration_minutes || 0)
     if (durDiff !== 0) return durDiff
 
