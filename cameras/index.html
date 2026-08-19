@@ -110,6 +110,41 @@
       .layout { flex-direction: column; }
       .sidebar { width: 100%; max-height: 220px; border-right: none; border-bottom: 1px solid var(--border); }
     }
+
+    /* ── Manage modal ────────────────────────────────── */
+    .icon-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+                border-radius: 6px; padding: 5px 12px; font-size: 0.78rem; cursor: pointer; }
+    .icon-btn:hover { border-color: var(--accent); }
+    .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none;
+               align-items: flex-start; justify-content: center; padding: 40px 16px; z-index: 50; overflow-y: auto; }
+    .overlay.open { display: flex; }
+    .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+             width: 100%; max-width: 560px; padding: 20px 22px; }
+    .modal h2 { font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); margin-bottom: 14px;
+                display: flex; justify-content: space-between; align-items: center; }
+    .modal h2 .x { cursor: pointer; color: var(--muted); font-size: 1.2rem; }
+    .cam-row { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--border);
+               border-radius: 8px; background: var(--surface2); margin-bottom: 6px; font-size: 0.82rem; }
+    .cam-row .nm { font-weight: 600; }
+    .cam-row .sub { color: var(--muted); font-size: 0.72rem; }
+    .cam-row .spacer { margin-left: auto; }
+    .pill { font-size: 0.68rem; padding: 2px 8px; border-radius: 999px; }
+    .pill.rec { background: #052e16; color: var(--live); } .pill.off { background: #1a0000; color: var(--error); }
+    .mini { background: var(--bg); border: 1px solid var(--border); color: var(--text);
+            border-radius: 5px; padding: 4px 9px; font-size: 0.72rem; cursor: pointer; }
+    .mini:hover { border-color: var(--accent); } .mini.danger:hover { border-color: var(--error); color: var(--error); }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
+    .form-grid input { background: var(--bg); border: 1px solid var(--border); color: var(--text);
+                       border-radius: 6px; padding: 7px 10px; font-size: 0.8rem; outline: none; }
+    .form-grid input:focus { border-color: var(--accent); }
+    .form-grid .full { grid-column: 1 / -1; }
+    .btn-primary { background: var(--accent); border: none; color: #fff; border-radius: 6px; padding: 8px 16px;
+                   font-size: 0.82rem; cursor: pointer; font-weight: 500; }
+    .btn-primary:disabled { opacity: 0.5; cursor: default; }
+    .modal-msg { font-size: 0.78rem; margin: 8px 0; min-height: 18px; }
+    .modal-msg.ok { color: var(--live); } .modal-msg.err { color: var(--error); }
+    .modal-divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+    .discover-item { display: flex; align-items: center; gap: 8px; font-size: 0.78rem; padding: 5px 0; }
   </style>
 </head>
 <body>
@@ -121,11 +156,41 @@
       Server: <input id="server-url" value="https://recordings.uditmathur.uk" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:3px 8px;border-radius:4px;font-size:0.75rem;width:240px" />
     </span>
     <div style="display:flex;align-items:center;gap:16px">
+      <button class="icon-btn" onclick="openManage()">&#9881; Manage cameras</button>
       <div id="server-status"><span class="status-dot status-warn"></span>Checking…</div>
       <div id="clock">--:--:--</div>
     </div>
   </div>
 </header>
+
+<!-- Manage cameras modal -->
+<div class="overlay" id="manage-overlay">
+  <div class="modal">
+    <h2>Manage cameras <span class="x" onclick="closeManage()">&times;</span></h2>
+    <div id="manage-list"><div class="empty">Loading…</div></div>
+
+    <hr class="modal-divider" />
+    <h2 style="font-size:0.8rem">Add a camera</h2>
+    <div class="form-grid">
+      <input id="add-name" class="full" placeholder="Name (e.g. Front gate)" />
+      <input id="add-host" placeholder="Camera IP (e.g. 192.168.0.189)" />
+      <input id="add-port" placeholder="ONVIF port (usually 8000)" value="8000" />
+      <input id="add-user" placeholder="Username" value="admin" />
+      <input id="add-pass" type="password" placeholder="Password" />
+      <input id="add-rtsp" class="full" placeholder="RTSP URL (optional — leave blank to auto-detect via ONVIF)" />
+    </div>
+    <div style="font-size:0.72rem;color:var(--muted);margin:-2px 0 8px">
+      <b>Recommended:</b> fill IP + username + password, keep ONVIF port <b>8000</b>, leave RTSP blank —
+      it auto-detects the stream. Only paste an RTSP URL manually if ONVIF is disabled on the camera.
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="btn-primary" id="add-btn" onclick="addCamera()">Add &amp; start recording</button>
+      <button class="mini" id="discover-btn" onclick="discover()">Scan LAN (ONVIF)</button>
+    </div>
+    <div class="modal-msg" id="manage-msg"></div>
+    <div id="discover-results"></div>
+  </div>
+</div>
 
 <div class="layout">
   <!-- Sidebar -->
@@ -342,6 +407,123 @@
   }
 
   function navigate(dir) { playClip(currentClipIdx + dir); }
+
+  // ── Camera management ─────────────────────────────────────────────────────
+  function mMsg(text, kind) {
+    const el = document.getElementById('manage-msg');
+    el.textContent = text || ''; el.className = 'modal-msg' + (kind ? ' ' + kind : '');
+  }
+  async function apiSend(path, method, body) {
+    const r = await fetch(getServer() + path, {
+      method,
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || `${r.status} ${r.statusText}`);
+    return data;
+  }
+
+  function openManage() { document.getElementById('manage-overlay').classList.add('open'); loadManageList(); }
+  function closeManage() { document.getElementById('manage-overlay').classList.remove('open'); mMsg(''); }
+  document.getElementById('manage-overlay').addEventListener('click', (e) => {
+    if (e.target.id === 'manage-overlay') closeManage();
+  });
+
+  async function loadManageList() {
+    const el = document.getElementById('manage-list');
+    el.innerHTML = '<div class="empty">Loading…</div>';
+    try {
+      const cams = await api('/cameras');
+      if (!cams.length) { el.innerHTML = '<div class="empty">No cameras configured yet — add one below.</div>'; return; }
+      el.innerHTML = '';
+      cams.forEach(c => {
+        const row = document.createElement('div');
+        row.className = 'cam-row';
+        row.innerHTML =
+          `<div><div class="nm">${c.name}</div><div class="sub">${c.host} · ONVIF ${c.onvifPort}</div></div>
+           <span class="spacer"></span>
+           <span class="pill ${c.recording ? 'rec' : 'off'}">${c.recording ? '● REC' : (c.enabled ? 'starting…' : 'paused')}</span>
+           <button class="mini" title="Pause/resume recording">${c.enabled ? 'Pause' : 'Resume'}</button>
+           <button class="mini" title="Re-detect stream after IP change">Refresh</button>
+           <button class="mini danger" title="Remove camera (keeps footage)">Delete</button>`;
+        const [pauseBtn, refreshBtn, delBtn] = row.querySelectorAll('button');
+        pauseBtn.onclick = () => act(`/cameras/${c.id}/toggle`, 'POST', null, `${c.name} ${c.enabled ? 'paused' : 'resumed'}`);
+        refreshBtn.onclick = () => act(`/cameras/${c.id}/refresh`, 'POST', null, `${c.name} stream refreshed`);
+        delBtn.onclick = () => { if (confirm(`Delete "${c.name}"? Recorded footage is kept.`)) act(`/cameras/${c.id}`, 'DELETE', null, `${c.name} deleted`); };
+        el.appendChild(row);
+      });
+    } catch (e) { el.innerHTML = errBox('Failed to load cameras', e.message); }
+  }
+
+  async function act(path, method, body, okMsg) {
+    mMsg('Working…');
+    try { await apiSend(path, method, body); mMsg(okMsg, 'ok'); loadManageList(); loadCameras(); }
+    catch (e) { mMsg(e.message, 'err'); }
+  }
+
+  // Build the standard CP Plus / Dahua RTSP URL from IP + credentials
+  function buildCpplus() {
+    const host = document.getElementById('add-host').value.trim();
+    const user = document.getElementById('add-user').value.trim();
+    const pass = document.getElementById('add-pass').value;
+    if (!host) return mMsg('Enter the camera IP first', 'err');
+    const url = `rtsp://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:554/cam/realmonitor?channel=1&subtype=0`;
+    document.getElementById('add-rtsp').value = url;
+    mMsg('RTSP URL built — click "Add & start recording"', 'ok');
+  }
+
+  async function addCamera() {
+    const host = document.getElementById('add-host').value.trim();
+    const rtsp = document.getElementById('add-rtsp').value.trim();
+    if (!host && !rtsp) return mMsg('Enter a camera IP or an RTSP URL', 'err');
+    const btn = document.getElementById('add-btn');
+    btn.disabled = true; mMsg(rtsp ? 'Adding camera…' : 'Connecting to camera via ONVIF…');
+    try {
+      const body = {
+        name: document.getElementById('add-name').value.trim() || host,
+        host,
+        onvifPort: parseInt(document.getElementById('add-port').value, 10) || 80,
+        username: document.getElementById('add-user').value.trim(),
+        password: document.getElementById('add-pass').value,
+        rtsp,
+      };
+      const r = await apiSend('/cameras', 'POST', body);
+      mMsg(`Added ${r.camera.name} — recording started`, 'ok');
+      document.getElementById('add-name').value = '';
+      document.getElementById('add-host').value = '';
+      document.getElementById('add-pass').value = '';
+      document.getElementById('add-rtsp').value = '';
+      loadManageList(); loadCameras();
+    } catch (e) { mMsg(`Could not add: ${e.message}`, 'err'); }
+    finally { btn.disabled = false; }
+  }
+
+  async function discover() {
+    const btn = document.getElementById('discover-btn');
+    const box = document.getElementById('discover-results');
+    btn.disabled = true; btn.textContent = 'Scanning…'; box.innerHTML = '';
+    try {
+      const found = await apiSend('/cameras/discover', 'POST');
+      if (!found.length) { box.innerHTML = '<div class="empty">No ONVIF cameras found on the LAN.</div>'; }
+      else {
+        box.innerHTML = '<div style="font-size:0.72rem;color:var(--muted);margin:8px 0 4px">Found — click to fill the form:</div>';
+        found.forEach(d => {
+          const row = document.createElement('div');
+          row.className = 'discover-item';
+          row.innerHTML = `<span>📷 ${d.host} : ${d.onvifPort}</span>`;
+          const use = document.createElement('button');
+          use.className = 'mini'; use.textContent = 'Use';
+          use.onclick = () => {
+            document.getElementById('add-host').value = d.host;
+            document.getElementById('add-port').value = d.onvifPort;
+          };
+          row.appendChild(use); box.appendChild(row);
+        });
+      }
+    } catch (e) { box.innerHTML = errBox('Scan failed', e.message); }
+    finally { btn.disabled = false; btn.textContent = 'Scan LAN for cameras'; }
+  }
 
   // Re-check when server URL changes
   document.getElementById('server-url').addEventListener('change', () => loadCameras());
