@@ -1,10 +1,41 @@
 import { isToday, parseISO, startOfDay, isAfter } from 'date-fns'
 
+// A monthly recurrence can be a single day {day:X} OR a day RANGE {start_day, due_day}
+// (e.g. GST filing: available the 16th, deadline the 20th, every month).
+export function isMonthlyWindow(rec) {
+  return !!rec && rec.frequency === 'monthly' && rec.start_day != null && rec.due_day != null
+}
+// The current-or-most-recent monthly cycle's window [from, due] for a day-range recurrence.
+function monthlyWindowCycle(rec, now) {
+  const off = now.getDate() < rec.start_day ? -1 : 0
+  const from = startOfDay(new Date(now.getFullYear(), now.getMonth() + off, rec.start_day))
+  const due = startOfDay(new Date(now.getFullYear(), now.getMonth() + off, rec.due_day))
+  return { from, due }
+}
+function completedOnOrAfter(task, from) {
+  const lc = task.last_completed_at ? startOfDay(new Date(task.last_completed_at)) : null
+  return !!lc && !isAfter(from, lc) // lc >= from
+}
+function taskEarliest(task) {
+  if (task.start_date) return startOfDay(parseISO(task.start_date))
+  if (task.created_at) return startOfDay(new Date(task.created_at))
+  return null
+}
+
 export function isRecurringTaskDue(task) {
   if (!task.is_recurring || !task.recurrence) return false
 
   const now = new Date()
   const rec = task.recurrence
+  const today = startOfDay(now)
+
+  // Monthly day-range: available while today is within [from, due] and not done this cycle.
+  if (isMonthlyWindow(rec)) {
+    const { from, due } = monthlyWindowCycle(rec, now)
+    if (completedOnOrAfter(task, from)) return false
+    return !isAfter(from, today) && !isAfter(today, due)
+  }
+
   const lastCompleted = task.last_completed_at ? new Date(task.last_completed_at) : null
 
   // Already completed today — hide it
@@ -34,6 +65,8 @@ function lastScheduledOccurrence(task) {
   if (!rec) return null
   const now = new Date()
   const today = startOfDay(now)
+
+  if (isMonthlyWindow(rec)) return monthlyWindowCycle(rec, now).due // the cycle's deadline day
 
   switch (rec.frequency) {
     case 'daily':
@@ -80,15 +113,38 @@ function lastScheduledOccurrence(task) {
 // until the user completes it, or until the next occurrence arrives (which resets it).
 export function isRecurringMissed(task) {
   if (!task.is_recurring || !task.recurrence) return false
+  const now = new Date()
+  const today = startOfDay(now)
+
+  // Monthly day-range: missed once the due day has passed without completion this cycle.
+  if (isMonthlyWindow(task.recurrence)) {
+    const { from, due } = monthlyWindowCycle(task.recurrence, now)
+    if (!isAfter(today, due)) return false            // still within / at the window
+    if (completedOnOrAfter(task, from)) return false  // done this cycle
+    const earliest = taskEarliest(task)
+    if (earliest && isAfter(earliest, due)) return false // cycle predates the task
+    return true
+  }
+
   const occ = lastScheduledOccurrence(task)
   if (!occ) return false
-  const today = startOfDay(new Date())
   // Occurrence is today (or future) -> handled by normal due-today / end_time logic, not "missed".
   if (!isAfter(today, occ)) return false
   // Completed on or after the occurrence day -> done, not missed.
   const lastCompleted = task.last_completed_at ? startOfDay(new Date(task.last_completed_at)) : null
   if (lastCompleted && !isAfter(occ, lastCompleted)) return false
   return true
+}
+
+// Deadline datetime for a recurring task's current cycle — the window's due day (or today
+// for single-day recurrences), at end_time / due_time / end of day. Used for the countdown.
+export function recurringDeadline(task) {
+  if (!task.is_recurring || !task.recurrence) return null
+  const rec = task.recurrence, now = new Date()
+  const datePart = isMonthlyWindow(rec) ? monthlyWindowCycle(rec, now).due : startOfDay(now)
+  const [h, m] = (task.end_time || task.due_time || '23:59').split(':').map(Number)
+  const d = new Date(datePart); d.setHours(h, m, 0, 0)
+  return d
 }
 
 // ---- Goals / sub-tasks -------------------------------------------------------
@@ -176,6 +232,8 @@ export function isOverdueNow(task) {
   if (task.is_recurring) {
     // Missed on a previous scheduled day and not completed since -> stays overdue.
     if (isRecurringMissed(task)) return true
+    // A monthly day-range is overdue only when the due day passes (handled above), not by time-of-day.
+    if (isMonthlyWindow(task.recurrence)) return false
     // Otherwise overdue if today's time window has fully passed.
     if (task.start_time && task.end_time) {
       return cur > toMins(task.end_time)
@@ -293,7 +351,9 @@ export function getRecurrenceLabel(recurrence) {
     case 'daily': return 'Daily'
     case 'alternate': return 'Every other day'
     case 'weekly': return `Weekly · ${(recurrence.days || []).map(d => DAYS[d]).join(', ')}`
-    case 'monthly': return `Monthly · ${ordinal(recurrence.day)}`
+    case 'monthly': return isMonthlyWindow(recurrence)
+      ? `Monthly · ${ordinal(recurrence.start_day)}–${ordinal(recurrence.due_day)}`
+      : `Monthly · ${ordinal(recurrence.day)}`
     case 'yearly': return `Yearly · ${MONTHS[(recurrence.month || 1) - 1]} ${recurrence.day}`
     default: return 'Recurring'
   }

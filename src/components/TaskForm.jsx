@@ -20,6 +20,9 @@ const DEFAULT_FORM = {
   freq: 'daily',
   weekly_days: [],
   monthly_day: '1',
+  monthly_mode: 'day', // 'day' = specific day, 'range' = from–to day window
+  monthly_from: '1',
+  monthly_due: '5',
   yearly_month: '1',
   yearly_day: '1',
   prerequisite_ids: [],
@@ -52,6 +55,9 @@ function toForm(task, defaultParentId) {
     freq: rec.frequency || 'daily',
     weekly_days: rec.days || [],
     monthly_day: String(rec.day || 1),
+    monthly_mode: (rec.start_day != null && rec.due_day != null) ? 'range' : 'day',
+    monthly_from: String(rec.start_day || 1),
+    monthly_due: String(rec.due_day || 5),
     yearly_month: String(rec.month || 1),
     yearly_day: String(rec.day || 1),
     prerequisite_ids: task.prerequisite_ids || [],
@@ -123,7 +129,9 @@ export default function TaskForm({ task, tasks, locations = [], defaultParentId,
           recurrence = { frequency: 'weekly', days: form.weekly_days }
           break
         case 'monthly':
-          recurrence = { frequency: 'monthly', day: parseInt(form.monthly_day) }
+          recurrence = form.monthly_mode === 'range'
+            ? { frequency: 'monthly', start_day: parseInt(form.monthly_from), due_day: parseInt(form.monthly_due) }
+            : { frequency: 'monthly', day: parseInt(form.monthly_day) }
           break
         case 'yearly':
           recurrence = { frequency: 'yearly', month: parseInt(form.yearly_month), day: parseInt(form.yearly_day) }
@@ -137,7 +145,8 @@ export default function TaskForm({ task, tasks, locations = [], defaultParentId,
       start_time: form.start_time || null,
       end_time: form.end_time || null,
       start_date: form.start_date || null,
-      due_date: form.due_date || form.start_date || null, // smart default: due = start
+      // Recurring tasks are scheduled by their recurrence rule — no single due date/time.
+      due_date: form.is_recurring ? null : (form.due_date || form.start_date || null),
       duration_minutes: totalMins,
       is_recurring: form.is_recurring,
       recurrence,
@@ -146,7 +155,7 @@ export default function TaskForm({ task, tasks, locations = [], defaultParentId,
       status: form.status,
       location_ids: form.location_ids,
       location_id: form.location_ids[0] || null, // legacy mirror
-      due_time: form.due_time || null,
+      due_time: form.is_recurring ? null : (form.due_time || null),
     }
 
     const { error: dbError } = isEdit
@@ -219,26 +228,28 @@ export default function TaskForm({ task, tasks, locations = [], defaultParentId,
             </Field>
           )}
 
-          {/* Dates + deadline time */}
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="Start Date">
-              <input type="date" className="input" value={form.start_date} onChange={e => set('start_date', e.target.value)} />
-            </Field>
-            <Field label="Due Date">
-              <input type="date" className="input" value={form.due_date} onChange={e => set('due_date', e.target.value)} />
-            </Field>
-            <Field label="Due Time">
-              <input type="time" className="input" value={form.due_time} onChange={e => set('due_time', e.target.value)} />
-            </Field>
-          </div>
-
-          {/* Date quick chips */}
-          <div className="flex gap-2 flex-wrap -mt-1">
-            <Chip onClick={() => set('start_date', todayISO())}>Today</Chip>
-            <Chip onClick={() => set('start_date', shiftISO(1))}>Tomorrow</Chip>
-            <Chip onClick={() => set('start_date', shiftISO(2))}>+2d</Chip>
-            <Chip onClick={() => set('due_date', form.start_date)}>Due = start</Chip>
-          </div>
+          {/* Dates + deadline time — hidden for recurring tasks (the recurrence rule sets the schedule) */}
+          {!form.is_recurring && (
+            <>
+              <div className="grid grid-cols-3 gap-3">
+                <Field label="Start Date">
+                  <input type="date" className="input" value={form.start_date} onChange={e => set('start_date', e.target.value)} />
+                </Field>
+                <Field label="Due Date">
+                  <input type="date" className="input" value={form.due_date} onChange={e => set('due_date', e.target.value)} />
+                </Field>
+                <Field label="Due Time">
+                  <input type="time" className="input" value={form.due_time} onChange={e => set('due_time', e.target.value)} />
+                </Field>
+              </div>
+              <div className="flex gap-2 flex-wrap -mt-1">
+                <Chip onClick={() => set('start_date', todayISO())}>Today</Chip>
+                <Chip onClick={() => set('start_date', shiftISO(1))}>Tomorrow</Chip>
+                <Chip onClick={() => set('start_date', shiftISO(2))}>+2d</Chip>
+                <Chip onClick={() => set('due_date', form.start_date)}>Due = start</Chip>
+              </div>
+            </>
+          )}
 
           {/* Availability window (OPTIONAL): only show/do this task within this clock-time
               window when you're at its location. Blank = open whenever you're there. */}
@@ -339,13 +350,30 @@ export default function TaskForm({ task, tasks, locations = [], defaultParentId,
               )}
 
               {form.freq === 'monthly' && (
-                <Field label="Day of month">
-                  <input
-                    type="number" min="1" max="31" className="input w-24"
-                    value={form.monthly_day}
-                    onChange={e => set('monthly_day', e.target.value)}
-                  />
-                </Field>
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <Chip active={form.monthly_mode === 'day'} onClick={() => set('monthly_mode', 'day')}>On a day</Chip>
+                    <Chip active={form.monthly_mode === 'range'} onClick={() => set('monthly_mode', 'range')}>Between days</Chip>
+                  </div>
+                  {form.monthly_mode === 'day' ? (
+                    <Field label="Day of month">
+                      <input type="number" min="1" max="31" className="input w-24"
+                        value={form.monthly_day} onChange={e => set('monthly_day', e.target.value)} />
+                    </Field>
+                  ) : (
+                    <div className="flex items-end gap-2">
+                      <Field label="From day">
+                        <input type="number" min="1" max="31" className="input w-20"
+                          value={form.monthly_from} onChange={e => set('monthly_from', e.target.value)} />
+                      </Field>
+                      <Field label="Due by day">
+                        <input type="number" min="1" max="31" className="input w-20"
+                          value={form.monthly_due} onChange={e => set('monthly_due', e.target.value)} />
+                      </Field>
+                      <p className="text-xs text-slate-400 pb-2">of every month</p>
+                    </div>
+                  )}
+                </div>
               )}
 
               {form.freq === 'yearly' && (

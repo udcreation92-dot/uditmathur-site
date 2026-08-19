@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { format, parseISO, startOfDay, isAfter } from 'date-fns'
-import { formatTime, formatDuration, getRecurrenceLabel, isTaskDoneForToday, taskLocationIds } from '../utils/taskUtils'
+import { formatTime, formatDuration, getRecurrenceLabel, isTaskDoneForToday, taskLocationIds, recurringDeadline } from '../utils/taskUtils'
 
 export default function TaskCard({ task, tasks, locations = [], bucket, nested = false, onComplete, onEdit, onDelete }) {
   const today = startOfDay(new Date())
@@ -126,10 +126,10 @@ export default function TaskCard({ task, tasks, locations = [], bucket, nested =
 // The absolute deadline moment for a task: its deadline date at end_time.
 // Recurring -> today; else due_date, then start_date, then today. Null if no end_time.
 function deadlineFor(task) {
+  if (task.is_recurring) return recurringDeadline(task) // occurrence-based (handles day-range)
   if (!task.end_time) return null
   let datePart
-  if (task.is_recurring) datePart = startOfDay(new Date())
-  else if (task.due_date) datePart = startOfDay(parseISO(task.due_date))
+  if (task.due_date) datePart = startOfDay(parseISO(task.due_date))
   else if (task.start_date) datePart = startOfDay(parseISO(task.start_date))
   else datePart = startOfDay(new Date())
   const [h, m] = task.end_time.split(':').map(Number)
