@@ -137,6 +137,11 @@ export default {
       return env.ASSETS.fetch(new Request(new URL('/accounts/index.html', url).href))
     }
 
+    // Money Market monitor shell
+    if (path === '/money-market' || path.startsWith('/money-market/')) {
+      return env.ASSETS.fetch(new Request(new URL('/money-market/index.html', url).href))
+    }
+
     // Everything else → landing page
     return env.ASSETS.fetch(new Request(new URL('/index.html', url).href))
   },

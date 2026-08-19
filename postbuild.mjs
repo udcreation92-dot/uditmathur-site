@@ -58,6 +58,20 @@ function copyDir(src, dest) {
 copyDir(path.resolve('accounts/dist'), path.resolve('dist/accounts'))
 console.log('✓ accounts/dist → dist/accounts')
 
+// ── 4b. Build money-market app ────────────────────────────────────────────────
+console.log('\nInstalling money-market dependencies…')
+execSync('npm install', {
+  cwd: path.resolve('money-market'),
+  stdio: 'inherit',
+})
+console.log('\nBuilding money-market app…')
+execSync('npm run build', {
+  cwd: path.resolve('money-market'),
+  stdio: 'inherit',
+})
+copyDir(path.resolve('money-market/dist'), path.resolve('dist/money-market'))
+console.log('✓ money-market/dist → dist/money-market')
+
 // ── 5. Copy _worker.js into dist/ for Cloudflare Pages advanced mode ─────────
 // Pages looks for _worker.js inside the output directory, not the repo root.
 // It automatically provides env.ASSETS to the worker (no wrangler.toml binding needed).
