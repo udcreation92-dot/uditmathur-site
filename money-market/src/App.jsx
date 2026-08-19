@@ -46,8 +46,8 @@ export default function App() {
   const chart = useMemo(() => (rows ?? []).map((r) => ({
     ...r,
     d: r.report_date,
-    bandBase: r.sdf_rate,
-    bandSize: r.sdf_rate != null && r.msf_rate != null ? +(r.msf_rate - r.sdf_rate).toFixed(4) : null,
+    // range-area value [floor, ceiling] → recharts renders a band between the two
+    band: r.sdf_rate != null && r.msf_rate != null ? [r.sdf_rate, r.msf_rate] : null,
   })), [rows])
 
   // latest row overall, and latest row that actually has a market rate (skip weekends/holidays)
@@ -65,7 +65,9 @@ export default function App() {
       }
     }
     if (!vals.length) return [4.5, 6]
-    return [Math.floor((Math.min(...vals) - 0.15) * 10) / 10, Math.ceil((Math.max(...vals) + 0.15) * 10) / 10]
+    // zoom tight to the data (round out to the nearest 0.05) so the corridor fills the panel
+    const r = (x, f) => Math[f](x * 20) / 20
+    return [r(Math.min(...vals) - 0.1, 'floor'), r(Math.max(...vals) + 0.1, 'ceil')]
   }, [chart])
 
   const corridorBroken = (rows ?? []).some((r) => r.corridor_ok === false)
@@ -103,16 +105,15 @@ export default function App() {
               <XAxis dataKey="d" tickFormatter={dmy} tick={{ fill: '#64748b', fontSize: 11 }}
                      stroke="#334155" minTickGap={24} />
               <YAxis domain={yDomain} tick={{ fill: '#64748b', fontSize: 11 }} stroke="#334155"
-                     tickFormatter={(v) => v.toFixed(2)} width={52}
+                     tickFormatter={(v) => v.toFixed(2)} width={52} tickCount={7} allowDecimals
                      label={{ value: '%', angle: 0, position: 'top', fill: '#64748b', fontSize: 11 }} />
               <Tooltip content={<RateTip />} />
               <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
 
-              {/* corridor band: transparent base to SDF, colored slab up to MSF */}
-              <Area dataKey="bandBase" stackId="band" stroke="none" fill="transparent"
-                    isAnimationActive={false} legendType="none" tooltipType="none" />
-              <Area dataKey="bandSize" stackId="band" stroke="none" fill={C.band} fillOpacity={0.1}
-                    isAnimationActive={false} name="Policy corridor (SDF–MSF)" tooltipType="none" />
+              {/* corridor band = range area between SDF (floor) and MSF (ceiling) */}
+              <Area dataKey="band" name="Policy corridor (SDF–MSF)" stroke={C.band}
+                    strokeOpacity={0.4} strokeWidth={1} fill={C.band} fillOpacity={0.12}
+                    connectNulls isAnimationActive={false} activeDot={false} tooltipType="none" />
 
               <Line type="stepAfter" dataKey="repo_rate" name="Policy repo" stroke={C.repo}
                     strokeWidth={2} strokeDasharray="6 4" dot={false} isAnimationActive={false} />

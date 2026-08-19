@@ -21,9 +21,10 @@ create table if not exists public.repo_rate_history (
   note           text
 );
 
--- Seed: TODO(Udit) verify the actual current repo rate + its MPC effective date.
+-- Seed: repo = SDF+0.25 corridor midpoint (SDF 5.00 / MSF 5.50 => 5.25).
+-- TODO(Udit) verify the exact MPC effective_from date against the RBI resolution history.
 insert into public.repo_rate_history (effective_from, repo_rate, note)
-values ('2025-06-06', 5.50, 'PLACEHOLDER — verify against the RBI MPC resolution history.')
+values ('2025-06-06', 5.25, 'PLACEHOLDER date — verify the effective_from against the RBI MPC resolution history.')
 on conflict (effective_from) do nothing;
 
 create or replace view public.money_market_enriched as
