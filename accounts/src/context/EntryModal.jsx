@@ -19,16 +19,16 @@ export function useEntryRefresh(fn) {
 }
 
 export function EntryModalProvider({ children }) {
-  const [state, setState] = useState(null) // { entryId, onSaved } | null
+  const [state, setState] = useState(null) // { entryId, initial, onSaved } | null
   const refreshRef = useRef(null)
 
-  const open  = useCallback((opts = {}) => setState({ entryId: opts.entryId ?? null, onSaved: opts.onSaved }), [])
+  const open  = useCallback((opts = {}) => setState({ entryId: opts.entryId ?? null, initial: opts.initial ?? null, onSaved: opts.onSaved }), [])
   const close = useCallback(() => setState(null), [])
   const setPageRefresh = useCallback(fn => { refreshRef.current = fn }, [])
 
-  function handleDone(saved) {
+  function handleDone(saved, createdIds) {
     if (saved) {
-      if (state?.onSaved) state.onSaved()
+      if (state?.onSaved) state.onSaved(createdIds)
       if (refreshRef.current) refreshRef.current()   // refresh the current page in place
     }
     setState(null)
@@ -52,11 +52,11 @@ export function EntryModalProvider({ children }) {
         >
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl my-4 sm:my-8 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 sticky top-0 bg-white z-10">
-              <h2 className="font-semibold">{state.entryId ? 'Edit Entry' : 'New Journal Entry'}</h2>
+              <h2 className="font-semibold">{state.entryId ? 'Edit Entry' : state.initial ? 'Review Draft Entry' : 'New Journal Entry'}</h2>
               <button onClick={close} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">×</button>
             </div>
             <div className="p-4">
-              <NewEntry entryId={state.entryId} embedded onDone={handleDone} />
+              <NewEntry entryId={state.entryId} initial={state.initial} embedded onDone={handleDone} />
             </div>
           </div>
         </div>

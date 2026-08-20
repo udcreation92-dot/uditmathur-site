@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import { useEntryModal } from '../context/EntryModal'
 
 // Statement Inbox / Review — the human-approval surface for the statement-automation
 // pipeline. Claude (via the Statements MCP connector) reads forwarded bank / credit-card /
@@ -17,8 +18,8 @@ export default function StatementInbox() {
   const [loading, setLoad]  = useState(true)
   const [drafts, setDrafts] = useState([])
   const [recon, setRecon]   = useState([])
-  const [editing, setEdit]  = useState(null)   // draft id being edited
   const [busy, setBusy]     = useState(null)   // id with an in-flight action
+  const modal = useEntryModal()
 
   async function load() {
     setLoad(true)
@@ -39,7 +40,33 @@ export default function StatementInbox() {
   }
   useEffect(() => { load() }, [])
 
-  async function approve(draft, lines) {
+  // Open the full New-Entry editor pre-filled with the draft, so the user can change
+  // accounts, add a cross-book mirror entry, etc. On save it posts real entries; we then
+  // mark the draft consumed.
+  function openEditor(draft) {
+    const initial = [{
+      book_id:   draft.book_id || draft.stmt_inbox?.book_id || '',
+      date:      draft.entry_date,
+      narration: draft.narration || '',
+      reference: draft.reference_no || '',
+      lines: (draft.lines || []).map((l) => ({ account_id: l.account_id || '', debit: l.debit || '', credit: l.credit || '' })),
+    }]
+    modal.open({
+      initial,
+      onSaved: async (ids) => {
+        await supabase.from('stmt_draft_entry')
+          .update({ status: 'posted', posted_entry_id: (ids && ids[0]) || null, updated_at: new Date().toISOString() })
+          .eq('id', draft.id)
+        const { count } = await supabase.from('stmt_draft_entry')
+          .select('id', { count: 'exact', head: true }).eq('inbox_id', draft.inbox_id).eq('status', 'draft')
+        if (!count) await supabase.from('stmt_inbox').update({ status: 'done' }).eq('id', draft.inbox_id)
+        load()
+      },
+    })
+  }
+
+  async function approve(draft) {
+    const lines = draft.lines || []
     const dr = lines.reduce((s, l) => s + (Number(l.debit) || 0), 0)
     const cr = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0)
     if (Math.abs(dr - cr) >= 0.01) return toast.error(`Does not balance (Dr ${money(dr)} vs Cr ${money(cr)})`)
@@ -127,9 +154,9 @@ export default function StatementInbox() {
         drafts.length === 0
           ? <Empty>No draft entries yet. In Claude, say “process my pending statements”.</Empty>
           : drafts.map((d) => (
-              <DraftCard key={d.id} draft={d} editing={editing === d.id} busy={busy === d.id}
-                onEdit={() => setEdit(editing === d.id ? null : d.id)}
-                onApprove={(lines) => approve(d, lines)} onReject={() => reject(d)} />
+              <DraftCard key={d.id} draft={d} busy={busy === d.id}
+                onEdit={() => openEditor(d)}
+                onApprove={() => approve(d)} onReject={() => reject(d)} />
             ))
       ) : (
         recon.length === 0
@@ -146,22 +173,16 @@ function Empty({ children }) {
 
 const CATEGORY_LABEL = {
   fno_net: 'F&O net', intraday_pnl: 'Intraday P&L', delivery_holding: 'Delivery holding',
+  alert: 'Alert', other: 'Entry',
 }
 
-function DraftCard({ draft, editing, busy, onEdit, onApprove, onReject }) {
+function DraftCard({ draft, busy, onEdit, onApprove, onReject }) {
   const inbox = draft.stmt_inbox || {}
-  const [lines, setLines] = useState(draft.lines || [])
-  const [narr, setNarr]   = useState(draft.narration || '')
-  useEffect(() => { setLines(draft.lines || []); setNarr(draft.narration || '') }, [draft, editing])
-
+  const lines = draft.lines || []
   const dr = lines.reduce((s, l) => s + (Number(l.debit) || 0), 0)
   const cr = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0)
   const balanced = Math.abs(dr - cr) < 0.01
   const isDraft = draft.status === 'draft'
-
-  function setLine(i, field, v) {
-    setLines(lines.map((l, j) => j === i ? { ...l, [field]: v === '' ? 0 : Number(v) } : l))
-  }
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4 mb-3">
@@ -169,15 +190,13 @@ function DraftCard({ draft, editing, busy, onEdit, onApprove, onReject }) {
         <span className="text-xs bg-brand-50 text-brand-700 rounded-full px-2 py-0.5 font-medium">
           {CATEGORY_LABEL[draft.category] || draft.category || 'entry'}
         </span>
-        <span className="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">{inbox.source || ''}</span>
+        {inbox.source && <span className="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">{inbox.source}</span>}
+        {inbox.kind === 'transaction_alert' && <span className="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">alert</span>}
         {draft.status === 'posted'   && <span className="text-xs rounded-full px-2 py-0.5 bg-green-100 text-green-700">posted</span>}
         {draft.status === 'rejected' && <span className="text-xs rounded-full px-2 py-0.5 bg-red-100 text-red-600">rejected</span>}
       </div>
 
-      {editing
-        ? <input value={narr} onChange={(e) => setNarr(e.target.value)}
-            className="mt-2 w-full border border-gray-300 rounded-md px-2 py-1 text-sm" />
-        : <div className="mt-2 text-sm">{draft.narration}</div>}
+      <div className="mt-2 text-sm">{draft.narration}</div>
       <div className="text-xs text-gray-400 mt-0.5">
         {draft.entry_date}{draft.reference_no ? ` · ref ${draft.reference_no}` : ''}{inbox.file_name ? ` · ${inbox.file_name}` : ''}
       </div>
@@ -192,18 +211,8 @@ function DraftCard({ draft, editing, busy, onEdit, onApprove, onReject }) {
           {lines.map((l, i) => (
             <tr key={i} className="border-t border-gray-100">
               <td className="py-1.5">{l.account_name || l.account_id}</td>
-              <td className="py-1.5 text-right tabular-nums">
-                {editing
-                  ? <input type="number" step="0.01" value={l.debit || ''} onChange={(e) => setLine(i, 'debit', e.target.value)}
-                      className="w-28 border border-gray-300 rounded px-1.5 py-0.5 text-right" />
-                  : (l.debit ? money(l.debit) : '')}
-              </td>
-              <td className="py-1.5 text-right tabular-nums">
-                {editing
-                  ? <input type="number" step="0.01" value={l.credit || ''} onChange={(e) => setLine(i, 'credit', e.target.value)}
-                      className="w-28 border border-gray-300 rounded px-1.5 py-0.5 text-right" />
-                  : (l.credit ? money(l.credit) : '')}
-              </td>
+              <td className="py-1.5 text-right tabular-nums">{l.debit ? money(l.debit) : ''}</td>
+              <td className="py-1.5 text-right tabular-nums">{l.credit ? money(l.credit) : ''}</td>
             </tr>
           ))}
           <tr className="border-t border-gray-200 text-xs">
@@ -218,14 +227,14 @@ function DraftCard({ draft, editing, busy, onEdit, onApprove, onReject }) {
 
       {isDraft && (
         <div className="flex gap-2 mt-3">
-          <button disabled={busy || !balanced}
-            onClick={() => onApprove(editing ? lines.map((l) => ({ ...l })) : lines)}
+          <button disabled={busy || !balanced} onClick={onApprove}
             className="px-3 py-1.5 rounded-md text-sm font-medium bg-brand-600 text-white disabled:opacity-50">
-            {busy ? 'Posting…' : editing ? 'Save & post' : 'Approve & post'}
+            {busy ? 'Posting…' : 'Approve & post'}
           </button>
           <button disabled={busy} onClick={onEdit}
-            className="px-3 py-1.5 rounded-md text-sm font-medium border border-gray-300 text-gray-700 disabled:opacity-50">
-            {editing ? 'Cancel' : 'Edit'}
+            className="px-3 py-1.5 rounded-md text-sm font-medium border border-gray-300 text-gray-700 disabled:opacity-50"
+            title="Open the full entry editor pre-filled — change accounts, add a mirror entry, then post">
+            Edit…
           </button>
           <button disabled={busy} onClick={onReject}
             className="px-3 py-1.5 rounded-md text-sm font-medium border border-red-300 text-red-600 disabled:opacity-50">
@@ -233,7 +242,7 @@ function DraftCard({ draft, editing, busy, onEdit, onApprove, onReject }) {
           </button>
         </div>
       )}
-      {draft.status === 'posted' && draft.narration &&
+      {draft.status === 'posted' &&
         <div className="text-xs text-green-600 mt-2">Posted to the ledger.</div>}
     </div>
   )

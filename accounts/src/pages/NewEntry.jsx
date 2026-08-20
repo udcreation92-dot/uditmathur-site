@@ -481,7 +481,7 @@ function EntryBlock({
 
 // ─── main page ───────────────────────────────────────────────────────────────
 
-export default function NewEntry({ entryId = null, onDone = null, embedded = false }) {
+export default function NewEntry({ entryId = null, onDone = null, embedded = false, initial = null }) {
   const { id: routeId } = useParams()
   const editId = entryId ?? routeId
   const navigate = useNavigate()
@@ -510,8 +510,24 @@ export default function NewEntry({ entryId = null, onDone = null, embedded = fal
       }
       setGstMap(gm)
 
-      // Pre-fill default book
-      if (bk?.length && !editId) {
+      // Pre-fill: from a supplied draft (initial), else a blank entry on the default book
+      if (initial && initial.length && !editId) {
+        setEntries(initial.map(e => ({
+          _id: uid(),
+          book_id:   e.book_id || bk?.[0]?.id || '',
+          date:      e.date || today(),
+          narration: e.narration || '',
+          reference: e.reference || '',
+          lines: (e.lines && e.lines.length ? e.lines : [{}, {}]).map(l => ({
+            _id: uid(),
+            account_id: l.account_id || '',
+            debit:  l.debit  ? String(l.debit)  : '',
+            credit: l.credit ? String(l.credit) : '',
+          })),
+          pendingFiles: [],
+          attachments: [],
+        })))
+      } else if (bk?.length && !editId) {
         setEntries([{ ...emptyEntry(), book_id: bk[0].id }])
       }
     }
@@ -590,6 +606,7 @@ export default function NewEntry({ entryId = null, onDone = null, embedded = fal
     if (!allValid) return
     setSaving(true)
     let saved = 0
+    const createdIds = []
 
     try {
       for (const entry of entries) {
@@ -634,11 +651,12 @@ export default function NewEntry({ entryId = null, onDone = null, embedded = fal
           } catch { toast.error(`Drive upload failed: ${file.name}`) }
         }
 
+        createdIds.push(entryId)
         saved++
       }
 
       toast.success(saved === 1 ? 'Entry saved' : `${saved} entries saved`)
-      if (onDone) onDone(true); else navigate('/ledger')
+      if (onDone) onDone(true, createdIds); else navigate('/ledger')
     } catch (err) {
       toast.error(err.message)
     } finally {
