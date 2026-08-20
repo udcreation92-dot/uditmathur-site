@@ -5,14 +5,22 @@ import { execSync } from 'child_process'
 const root = path.resolve('.')
 
 // ── 1. Move dist/task.html → dist/task/index.html ────────────────────────────
-//    Also move dist/assets/* → dist/task/assets/* so the /task/ base path works
 const taskDir = path.resolve('dist/task')
 if (!fs.existsSync(taskDir)) fs.mkdirSync(taskDir, { recursive: true })
 if (fs.existsSync(path.resolve('dist/task.html'))) {
   fs.renameSync(path.resolve('dist/task.html'), path.resolve('dist/task/index.html'))
   console.log('✓ dist/task.html → dist/task/index.html')
 }
-// Move assets into dist/task/assets so /task/assets/... paths resolve
+
+// ── 1b. Move dist/trading.html → dist/trading/index.html ─────────────────────
+const tradingDir = path.resolve('dist/trading')
+if (!fs.existsSync(tradingDir)) fs.mkdirSync(tradingDir, { recursive: true })
+if (fs.existsSync(path.resolve('dist/trading.html'))) {
+  fs.renameSync(path.resolve('dist/trading.html'), path.resolve('dist/trading/index.html'))
+  console.log('✓ dist/trading.html → dist/trading/index.html')
+}
+
+// Move shared assets into dist/assets (keep in place — both apps reference /assets/)
 const srcAssets  = path.resolve('dist/assets')
 const destAssets = path.resolve('dist/task/assets')
 if (fs.existsSync(srcAssets)) {

@@ -1,8 +1,18 @@
 # Secrets
 .env
 .env.local
+.env.production
 accounts/.env
 accounts/.env.local
+trading/backend/.env
+trading/backend/.fyers_token.json
+trading/backend/.strategies.db
+trading/backend/.shoonya_ip_state.json
+
+# Trading dashboard — local-only, never pushed to GitHub/Cloudflare
+trading/
+src/trading/
+.scalps.db
 
 # Dependencies
 node_modules/
@@ -17,3 +27,4 @@ accounts/dist/
 .claude/
 skills-lock.json
 .mcp.json
+dist-local/

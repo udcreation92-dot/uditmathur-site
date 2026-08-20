@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { format, parseISO, startOfDay, isAfter } from 'date-fns'
-import { formatTime, formatDuration, getRecurrenceLabel, isTaskDoneForToday, taskLocationIds, recurringDeadline } from '../utils/taskUtils'
+import { formatTime, formatDuration, getRecurrenceLabel, isTaskDoneForToday, taskLocationIds, recurringDeadline, isActiveToday } from '../utils/taskUtils'
 
 export default function TaskCard({ task, tasks, locations = [], bucket, nested = false, onComplete, onEdit, onDelete }) {
   const today = startOfDay(new Date())
@@ -11,7 +11,8 @@ export default function TaskCard({ task, tasks, locations = [], bucket, nested =
   const prereqTasks = (task.prerequisite_ids || [])
     .map(id => tasks.find(t => t.id === id))
     .filter(Boolean)
-  const unmetPrereqs = prereqTasks.filter(t => !isTaskDoneForToday(t))
+  // Only prerequisites that are active TODAY and not yet done actually block this task.
+  const unmetPrereqs = prereqTasks.filter(t => !isTaskDoneForToday(t) && isActiveToday(t))
   const isBlocked = unmetPrereqs.length > 0
 
   const taskLocs = taskLocationIds(task).map(id => locations.find(l => l.id === id)).filter(Boolean)

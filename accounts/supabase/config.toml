@@ -1,0 +1,7 @@
+project_id = "swxfxjtnospxnkhznyal"
+
+# Telegram cannot send a Supabase JWT. The webhook authenticates itself via the
+# x-telegram-bot-api-secret-token header (TELEGRAM_WEBHOOK_SECRET), so skip the
+# built-in JWT check.
+[functions.accounts-bot]
+verify_jwt = false

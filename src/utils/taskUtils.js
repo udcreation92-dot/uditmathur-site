@@ -178,11 +178,27 @@ export function isTaskDoneForToday(task) {
   return task.status === 'completed'
 }
 
+// Is this task something to actually do TODAY? (not done/cancelled; a recurring task is
+// only "active" on a scheduled/missed day; a non-recurring one only once its start date
+// has arrived). Used so a prerequisite only blocks when it's itself in play today.
+export function isActiveToday(task) {
+  if (!task) return false
+  if (task.status === 'completed' || task.status === 'cancelled') return false
+  if (task.is_recurring) return isRecurringTaskDue(task) || isRecurringMissed(task)
+  if (task.start_date && isAfter(startOfDay(parseISO(task.start_date)), startOfDay(new Date()))) return false
+  return true
+}
+
+// A prerequisite only BLOCKS a task when it is active TODAY and not yet done. A prereq
+// that isn't scheduled for today (future, or a recurring prereq not due today) does not
+// block — so e.g. a daily "Bath" isn't hidden just because "Cut nails" isn't due today.
 export function prerequisitesMet(task, allTasks) {
   if (!task.prerequisite_ids || task.prerequisite_ids.length === 0) return true
   return task.prerequisite_ids.every(id => {
     const prereq = allTasks.find(t => t.id === id)
-    return isTaskDoneForToday(prereq)
+    if (!prereq) return true
+    if (isTaskDoneForToday(prereq)) return true   // done -> satisfied
+    return !isActiveToday(prereq)                 // not today's -> doesn't block
   })
 }
 

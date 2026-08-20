@@ -7,7 +7,10 @@ export default defineConfig({
   base: '/task/',
   build: {
     rollupOptions: {
-      input: resolve(__dirname, 'task.html'),
+      input: {
+        task: resolve(__dirname, 'task.html'),
+        trading: resolve(__dirname, 'trading.html'),
+      },
     }
   }
 })

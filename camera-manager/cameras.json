@@ -1,0 +1,32 @@
+[
+  {
+    "id": "camera_01",
+    "name": "Camera 01",
+    "host": "192.168.1.10",
+    "onvifPort": 8000,
+    "username": "admin",
+    "password": "onlineudit",
+    "rtsp": "rtsp://admin:onlineudit@192.168.1.10:5543/live/channel0",
+    "enabled": false
+  },
+  {
+    "id": "camera_02",
+    "name": "Camera 02",
+    "host": "192.168.1.26",
+    "onvifPort": 8000,
+    "username": "admin",
+    "password": "onlineudit",
+    "rtsp": "rtsp://admin:onlineudit@192.168.1.26:5543/live/channel0",
+    "enabled": true
+  },
+  {
+    "id": "camera_03",
+    "name": "Camera 03",
+    "host": "192.168.0.189",
+    "onvifPort": 8000,
+    "username": "admin",
+    "password": "onlineudit",
+    "rtsp": "rtsp://admin:onlineudit@192.168.0.189:5543/live/channel0",
+    "enabled": true
+  }
+]
