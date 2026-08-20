@@ -12,6 +12,7 @@ const nav = [
   { to: '/trial-balance',  label: 'Trial Balance',   icon: '⚖️' },
   { to: '/reconciliation', label: 'Reconciliation',  icon: '🔄' },
   { to: '/statement-reconcile', label: 'Statement Reconcile', icon: '🔍' },
+  { to: '/statement-inbox', label: 'Statement Inbox',   icon: '📄' },
   { to: '/reports',        label: 'Reports',         icon: '📊' },
   { to: '/invoices',       label: 'Invoices',        icon: '🧾' },
   { to: '/work-orders',    label: 'Work Orders',     icon: '📑' },
