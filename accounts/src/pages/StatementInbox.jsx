@@ -57,6 +57,7 @@ export default function StatementInbox() {
         await supabase.from('stmt_draft_entry')
           .update({ status: 'posted', posted_entry_id: (ids && ids[0]) || null, updated_at: new Date().toISOString() })
           .eq('id', draft.id)
+        await rememberPayee(draft.payee, ids)
         const { count } = await supabase.from('stmt_draft_entry')
           .select('id', { count: 'exact', head: true }).eq('inbox_id', draft.inbox_id).eq('status', 'draft')
         if (!count) await supabase.from('stmt_inbox').update({ status: 'done' }).eq('id', draft.inbox_id)
@@ -97,12 +98,12 @@ export default function StatementInbox() {
       await supabase.from('stmt_draft_entry')
         .update({ status: 'posted', posted_entry_id: entry.id, lines, updated_at: new Date().toISOString() })
         .eq('id', draft.id)
+      await rememberPayee(draft.payee, [entry.id])
       // close the statement if nothing else is pending on it
       const { count } = await supabase.from('stmt_draft_entry')
         .select('id', { count: 'exact', head: true }).eq('inbox_id', draft.inbox_id).eq('status', 'draft')
       if (!count) await supabase.from('stmt_inbox').update({ status: 'done' }).eq('id', draft.inbox_id)
       toast.success('Posted to ledger')
-      setEdit(null)
       await load()
     } catch (e) {
       toast.error(e.message)
@@ -129,6 +130,33 @@ export default function StatementInbox() {
       toast.success('Marked done')
       await load()
     } catch (e) { toast.error(e.message) }
+  }
+
+  // Learn: map the draft's payee → the category (income/expense) account actually posted, into
+  // bot_payee_map — the SAME memory Claude reads. So next time the same merchant/source appears,
+  // Claude proposes this account instead of Suspense. Fires on Approve and on Edit-save, so a
+  // correction you make in the app teaches Claude for later. (No income/expense line — e.g. a
+  // transfer or a still-Suspense draft — is skipped, so we only learn a real classification.)
+  async function rememberPayee(payee, entryIds) {
+    if (!payee || !entryIds || !entryIds.length) return
+    try {
+      const { data: entries } = await supabase.from('journal_entries')
+        .select('id, book_id, journal_lines(debit, credit, accounts(id, type))')
+        .in('id', entryIds)
+      for (const e of entries || []) {
+        const cat = (e.journal_lines || [])
+          .filter((l) => ['income', 'expense'].includes(l.accounts?.type))
+          .map((l) => ({ account_id: l.accounts.id, amt: Math.abs((Number(l.debit) || 0) - (Number(l.credit) || 0)) }))
+          .sort((a, b) => b.amt - a.amt)[0]
+        if (!cat) continue
+        const { data: ex } = await supabase.from('bot_payee_map')
+          .select('id, hits').eq('payee', payee).eq('book_id', e.book_id).maybeSingle()
+        if (ex) await supabase.from('bot_payee_map')
+          .update({ account_id: cat.account_id, hits: (ex.hits || 1) + 1, updated_at: new Date().toISOString() }).eq('id', ex.id)
+        else await supabase.from('bot_payee_map')
+          .insert({ payee, book_id: e.book_id, account_id: cat.account_id })
+      }
+    } catch { /* best-effort learning — never block posting */ }
   }
 
   const pendingCount = drafts.filter((d) => d.status === 'draft').length
