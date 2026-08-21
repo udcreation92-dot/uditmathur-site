@@ -19,11 +19,12 @@ export default function StatementInbox() {
   const [drafts, setDrafts] = useState([])
   const [recon, setRecon]   = useState([])
   const [busy, setBusy]     = useState(null)   // id with an in-flight action
+  const [acctName, setAcct] = useState({})     // account_id -> "Name (Book)"
   const modal = useEntryModal()
 
   async function load() {
     setLoad(true)
-    const [d, r] = await Promise.all([
+    const [d, r, a] = await Promise.all([
       supabase.from('stmt_draft_entry')
         .select('*, stmt_inbox(source, kind, subject, file_name, book_id)')
         .in('status', ['draft', 'posted', 'rejected'])
@@ -31,9 +32,13 @@ export default function StatementInbox() {
       supabase.from('stmt_recon_report')
         .select('*, stmt_inbox(source, kind, subject, file_name)')
         .order('created_at', { ascending: false }),
+      supabase.from('accounts').select('id, name, books(name)'),
     ])
     if (d.error) toast.error(d.error.message)
     if (r.error) toast.error(r.error.message)
+    const map = {}
+    for (const ac of a.data || []) map[ac.id] = ac.books?.name ? `${ac.name} · ${ac.books.name}` : ac.name
+    setAcct(map)
     setDrafts(d.data || [])
     setRecon(r.data || [])
     setLoad(false)
@@ -182,7 +187,7 @@ export default function StatementInbox() {
         drafts.length === 0
           ? <Empty>No draft entries yet. In Claude, say “process my pending statements”.</Empty>
           : drafts.map((d) => (
-              <DraftCard key={d.id} draft={d} busy={busy === d.id}
+              <DraftCard key={d.id} draft={d} busy={busy === d.id} accountName={acctName}
                 onEdit={() => openEditor(d)}
                 onApprove={() => approve(d)} onReject={() => reject(d)} />
             ))
@@ -204,7 +209,7 @@ const CATEGORY_LABEL = {
   alert: 'Alert', other: 'Entry',
 }
 
-function DraftCard({ draft, busy, onEdit, onApprove, onReject }) {
+function DraftCard({ draft, busy, onEdit, onApprove, onReject, accountName = {} }) {
   const inbox = draft.stmt_inbox || {}
   const lines = draft.lines || []
   const dr = lines.reduce((s, l) => s + (Number(l.debit) || 0), 0)
@@ -238,7 +243,7 @@ function DraftCard({ draft, busy, onEdit, onApprove, onReject }) {
         <tbody>
           {lines.map((l, i) => (
             <tr key={i} className="border-t border-gray-100">
-              <td className="py-1.5">{l.account_name || l.account_id}</td>
+              <td className="py-1.5">{l.account_name || accountName[l.account_id] || l.account_id}</td>
               <td className="py-1.5 text-right tabular-nums">{l.debit ? money(l.debit) : ''}</td>
               <td className="py-1.5 text-right tabular-nums">{l.credit ? money(l.credit) : ''}</td>
             </tr>
