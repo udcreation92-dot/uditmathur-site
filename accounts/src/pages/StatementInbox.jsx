@@ -13,6 +13,12 @@ import { useEntryModal } from '../context/EntryModal'
 const money = (n) =>
   '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+function withinDays(d1, d2, n) {
+  if (!d1 || !d2) return true
+  const a = new Date(d1 + 'T00:00:00Z').getTime(), b = new Date(d2 + 'T00:00:00Z').getTime()
+  return Math.abs(a - b) <= n * 86400000
+}
+
 export default function StatementInbox() {
   const [tab, setTab]       = useState('drafts')
   const [loading, setLoad]  = useState(true)
@@ -20,6 +26,7 @@ export default function StatementInbox() {
   const [recon, setRecon]   = useState([])
   const [busy, setBusy]     = useState(null)   // id with an in-flight action
   const [acctName, setAcct] = useState({})     // account_id -> "Name (Book)"
+  const [dup, setDup]       = useState({})     // draft_id -> matching ledger entry (possible duplicate)
   const modal = useEntryModal()
 
   async function load() {
@@ -41,6 +48,35 @@ export default function StatementInbox() {
     setAcct(map)
     setDrafts(d.data || [])
     setRecon(r.data || [])
+
+    // Duplicate guard: flag any OPEN draft whose amount already exists in the ledger, same book,
+    // within ±4 days of its date — so we don't post something you already recorded live.
+    const openDrafts = (d.data || []).filter((x) => x.status === 'draft')
+    const amounts = [...new Set(openDrafts
+      .map((x) => (x.lines || []).reduce((s, l) => s + (Number(l.debit) || 0), 0))
+      .filter((v) => v > 0))]
+    const dupMap = {}
+    if (amounts.length) {
+      const orFilter = amounts.map((v) => `debit.eq.${v}`).concat(amounts.map((v) => `credit.eq.${v}`)).join(',')
+      const { data: cand } = await supabase.from('journal_lines')
+        .select('debit, credit, journal_entries(id, date, narration, book_id)')
+        .or(orFilter).limit(1000)
+      const entries = []
+      const seenE = new Set()
+      for (const l of cand || []) {
+        const je = l.journal_entries
+        if (!je || seenE.has(je.id)) continue
+        seenE.add(je.id)
+        entries.push({ id: je.id, date: je.date, narration: je.narration, book_id: je.book_id, amount: Math.max(Number(l.debit) || 0, Number(l.credit) || 0) })
+      }
+      for (const drf of openDrafts) {
+        const amt = (drf.lines || []).reduce((s, l) => s + (Number(l.debit) || 0), 0)
+        const bk = drf.book_id || drf.stmt_inbox?.book_id
+        const m = entries.find((e) => e.book_id === bk && Math.abs(e.amount - amt) < 0.01 && withinDays(e.date, drf.entry_date, 4) && e.id !== drf.posted_entry_id)
+        if (m) dupMap[drf.id] = m
+      }
+    }
+    setDup(dupMap)
     setLoad(false)
   }
   useEffect(() => { load() }, [])
@@ -187,7 +223,7 @@ export default function StatementInbox() {
         drafts.length === 0
           ? <Empty>No draft entries yet. In Claude, say “process my pending statements”.</Empty>
           : drafts.map((d) => (
-              <DraftCard key={d.id} draft={d} busy={busy === d.id} accountName={acctName}
+              <DraftCard key={d.id} draft={d} busy={busy === d.id} accountName={acctName} dup={dup[d.id]}
                 onEdit={() => openEditor(d)}
                 onApprove={() => approve(d)} onReject={() => reject(d)} />
             ))
@@ -209,7 +245,7 @@ const CATEGORY_LABEL = {
   alert: 'Alert', other: 'Entry',
 }
 
-function DraftCard({ draft, busy, onEdit, onApprove, onReject, accountName = {} }) {
+function DraftCard({ draft, busy, onEdit, onApprove, onReject, accountName = {}, dup = null }) {
   const inbox = draft.stmt_inbox || {}
   const lines = draft.lines || []
   const dr = lines.reduce((s, l) => s + (Number(l.debit) || 0), 0)
@@ -233,6 +269,12 @@ function DraftCard({ draft, busy, onEdit, onApprove, onReject, accountName = {} 
       <div className="text-xs text-gray-400 mt-0.5">
         {draft.entry_date}{draft.reference_no ? ` · ref ${draft.reference_no}` : ''}{inbox.file_name ? ` · ${inbox.file_name}` : ''}
       </div>
+
+      {isDraft && dup && (
+        <div className="mt-2 text-xs rounded-md bg-amber-50 border border-amber-200 text-amber-800 px-2.5 py-1.5">
+          ⚠️ Possibly already recorded — {dup.date}{dup.narration ? ` · ${dup.narration}` : ''}. Check before posting (or Reject).
+        </div>
+      )}
 
       <table className="w-full text-sm mt-3">
         <thead><tr className="text-gray-400 text-xs">
