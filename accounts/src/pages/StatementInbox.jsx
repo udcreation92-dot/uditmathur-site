@@ -31,7 +31,7 @@ export default function StatementInbox() {
 
   async function load() {
     setLoad(true)
-    const [d, r, a] = await Promise.all([
+    const [d, r, a, bk] = await Promise.all([
       supabase.from('stmt_draft_entry')
         .select('*, stmt_inbox(source, kind, subject, file_name, book_id)')
         .in('status', ['draft', 'posted', 'rejected'])
@@ -39,12 +39,17 @@ export default function StatementInbox() {
       supabase.from('stmt_recon_report')
         .select('*, stmt_inbox(source, kind, subject, file_name)')
         .order('created_at', { ascending: false }),
-      supabase.from('accounts').select('id, name, books(name)'),
+      supabase.from('accounts').select('id, name, book_id'),
+      supabase.from('books').select('id, name'),
     ])
     if (d.error) toast.error(d.error.message)
     if (r.error) toast.error(r.error.message)
+    if (a.error) toast.error(`accounts: ${a.error.message}`)
+    // Resolve account_id -> "Name · Book" with two plain selects (no embed, which was unreliable).
+    const bookNames = {}
+    for (const b of bk.data || []) bookNames[b.id] = b.name
     const map = {}
-    for (const ac of a.data || []) map[ac.id] = ac.books?.name ? `${ac.name} · ${ac.books.name}` : ac.name
+    for (const ac of a.data || []) map[ac.id] = bookNames[ac.book_id] ? `${ac.name} · ${bookNames[ac.book_id]}` : ac.name
     setAcct(map)
     setDrafts(d.data || [])
     setRecon(r.data || [])
