@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { format, parseISO, startOfDay, isAfter } from 'date-fns'
-import { formatTime, formatDuration, getRecurrenceLabel, isTaskDoneForToday, taskLocationIds, recurringDeadline, isActiveToday } from '../utils/taskUtils'
+import { formatTime, formatDuration, getRecurrenceLabel, isTaskDoneForToday, taskLocationIds, taskPersonIds, recurringDeadline, isActiveToday } from '../utils/taskUtils'
+import TaskTimer from './TaskTimer'
 
-export default function TaskCard({ task, tasks, locations = [], bucket, nested = false, onComplete, onEdit, onDelete }) {
+export default function TaskCard({ task, tasks, locations = [], persons = [], bucket, nested = false, onComplete, onEdit, onDelete, runningSince = null, trackedSeconds = 0, onStartTimer, onPauseTimer }) {
   const today = startOfDay(new Date())
   const isOverdue = !task.is_recurring && task.due_date && isAfter(today, startOfDay(parseISO(task.due_date)))
   const isDone = isTaskDoneForToday(task)
@@ -16,6 +17,7 @@ export default function TaskCard({ task, tasks, locations = [], bucket, nested =
   const isBlocked = unmetPrereqs.length > 0
 
   const taskLocs = taskLocationIds(task).map(id => locations.find(l => l.id === id)).filter(Boolean)
+  const taskPeople = taskPersonIds(task).map(id => persons.find(p => p.id === id)).filter(Boolean)
 
   const timeRange = task.start_time && task.end_time
     ? `${formatTime(task.start_time)} – ${formatTime(task.end_time)}`
@@ -53,6 +55,7 @@ export default function TaskCard({ task, tasks, locations = [], bucket, nested =
               <Badge color="purple">↻ {getRecurrenceLabel(task.recurrence)}</Badge>
             )}
             {taskLocs.map(l => <Badge key={l.id} color="teal">📍 {l.name}</Badge>)}
+            {taskPeople.map(p => <Badge key={p.id} color="pink">👤 {p.name}</Badge>)}
             {isOverdue && !isDone && <Badge color="red">Overdue</Badge>}
             {isBlocked && !isDone && <Badge color="orange">Blocked</Badge>}
             {task.status === 'in_progress' && <Badge color="blue">In Progress</Badge>}
@@ -87,6 +90,18 @@ export default function TaskCard({ task, tasks, locations = [], bucket, nested =
               </span>
             )}
           </div>
+
+          {/* Time tracking */}
+          {!isDone && onStartTimer && (
+            <div className="mt-2">
+              <TaskTimer
+                baseSeconds={trackedSeconds}
+                runningSince={runningSince}
+                onStart={() => onStartTimer(task)}
+                onPause={() => onPauseTimer(task)}
+              />
+            </div>
+          )}
 
           {/* Blocked by */}
           {unmetPrereqs.length > 0 && (
@@ -202,6 +217,7 @@ function Badge({ color, children }) {
     green: 'bg-green-100 text-green-700',
     teal: 'bg-teal-100 text-teal-700',
     indigo: 'bg-indigo-100 text-indigo-700',
+    pink: 'bg-pink-100 text-pink-700',
   }
   return (
     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${styles[color]}`}>

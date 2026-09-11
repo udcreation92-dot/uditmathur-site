@@ -4,7 +4,16 @@ import GoalsPanel from './GoalsPanel'
 import LocationOverview from './LocationOverview'
 import QuickAdd from './QuickAdd'
 
-export default function Dashboard({ tasks, locations = [], currentLocationId = null, onArrive, onEdit, onComplete, onDelete, onQuickSave, onAddGoal, onAddStep }) {
+export default function Dashboard({ tasks, locations = [], persons = [], currentLocationId = null, onArrive, onEdit, onComplete, onDelete, onQuickSave, onAddGoal, onAddStep, runningTaskId = null, runningSince = null, trackedSecondsByTask = {}, onStartTimer, onPauseTimer }) {
+  // Per-card timer props helper.
+  const timerFor = (t) => ({
+    persons,
+    runningSince: runningTaskId === t.id ? runningSince : null,
+    trackedSeconds: trackedSecondsByTask[t.id] || 0,
+    onStartTimer,
+    onPauseTimer,
+  })
+
   // Ids of tasks that are goals (have ≥1 sub-task). Goal PARENTS are excluded from the
   // matrix (they're containers); their sub-tasks stay in the matrix like any task.
   const goalIdSet = new Set(tasks.filter(t => t.parent_id).map(t => t.parent_id))
@@ -74,7 +83,7 @@ export default function Dashboard({ tasks, locations = [], currentLocationId = n
       {overdue.length > 0 && (
         <Section title="Overdue" count={overdue.length} accent="red" subtitle="Past deadline">
           {overdue.map(t => (
-            <TaskCard key={t.id} task={t} tasks={tasks} locations={locations} bucket="overdue" onEdit={onEdit} onComplete={onComplete} onDelete={onDelete} />
+            <TaskCard key={t.id} task={t} tasks={tasks} locations={locations} bucket="overdue" onEdit={onEdit} onComplete={onComplete} onDelete={onDelete} {...timerFor(t)} />
           ))}
         </Section>
       )}
@@ -82,7 +91,7 @@ export default function Dashboard({ tasks, locations = [], currentLocationId = n
       {now.length > 0 && (
         <Section title="Now" count={now.length} accent="blue" dot="bg-green-400" subtitle="Do it here, now">
           {now.map(t => (
-            <TaskCard key={t.id} task={t} tasks={tasks} locations={locations} bucket="current" onEdit={onEdit} onComplete={onComplete} onDelete={onDelete} />
+            <TaskCard key={t.id} task={t} tasks={tasks} locations={locations} bucket="current" onEdit={onEdit} onComplete={onComplete} onDelete={onDelete} {...timerFor(t)} />
           ))}
         </Section>
       )}
@@ -90,7 +99,7 @@ export default function Dashboard({ tasks, locations = [], currentLocationId = n
       {later.length > 0 && (
         <Section title="Later today" count={later.length} accent="slate" subtitle="Its time window opens later">
           {later.map(t => (
-            <TaskCard key={t.id} task={t} tasks={tasks} locations={locations} onEdit={onEdit} onComplete={onComplete} onDelete={onDelete} />
+            <TaskCard key={t.id} task={t} tasks={tasks} locations={locations} onEdit={onEdit} onComplete={onComplete} onDelete={onDelete} {...timerFor(t)} />
           ))}
         </Section>
       )}

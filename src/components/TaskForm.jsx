@@ -15,6 +15,7 @@ const DEFAULT_FORM = {
   duration_hours: '',
   duration_minutes_extra: '',
   location_ids: [],
+  person_ids: [],
   due_time: '',
   is_recurring: false,
   freq: 'daily',
@@ -64,11 +65,12 @@ function toForm(task, defaultParentId) {
     parent_id: task.parent_id || '',
     status: task.status || 'pending',
     location_ids: (task.location_ids && task.location_ids.length) ? task.location_ids : (task.location_id ? [task.location_id] : []),
+    person_ids: task.person_ids || [],
     due_time: task.due_time ? task.due_time.slice(0, 5) : '',
   }
 }
 
-export default function TaskForm({ task, tasks, locations = [], defaultParentId, onClose, onSave }) {
+export default function TaskForm({ task, tasks, locations = [], persons = [], defaultParentId, onClose, onSave }) {
   const [form, setForm] = useState(() => toForm(task, defaultParentId))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -155,6 +157,7 @@ export default function TaskForm({ task, tasks, locations = [], defaultParentId,
       status: form.status,
       location_ids: form.location_ids,
       location_id: form.location_ids[0] || null, // legacy mirror
+      person_ids: form.person_ids,
       due_time: form.is_recurring ? null : (form.due_time || null),
     }
 
@@ -225,6 +228,28 @@ export default function TaskForm({ task, tasks, locations = [], defaultParentId,
                 })}
               </div>
               <p className="text-xs text-slate-400 mt-1">{form.location_ids.length === 0 ? 'None selected = Anywhere (shows at every location)' : 'Shows when you’re at any of these'}</p>
+            </Field>
+          )}
+
+          {/* Person(s) — who the task involves / is for. Optional. */}
+          {persons.length > 0 && (
+            <Field label="People — किसका काम / किसके साथ?">
+              <div className="flex gap-2 flex-wrap">
+                {persons.map(p => {
+                  const on = form.person_ids.includes(p.id)
+                  return (
+                    <button
+                      key={p.id} type="button"
+                      onClick={() => set('person_ids', on ? form.person_ids.filter(id => id !== p.id) : [...form.person_ids, p.id])}
+                      className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                        on ? 'bg-pink-600 text-white border-pink-600' : 'bg-white text-slate-600 border-slate-200 hover:border-pink-400'
+                      }`}
+                    >
+                      👤 {p.name}
+                    </button>
+                  )
+                })}
+              </div>
             </Field>
           )}
 

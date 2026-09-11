@@ -9,6 +9,7 @@ export default function Header({ view, onViewChange, onAdd, onSignOut }) {
           <NavBtn active={view === 'dashboard'} onClick={() => onViewChange('dashboard')}>Dashboard</NavBtn>
           <NavBtn active={view === 'all'} onClick={() => onViewChange('all')}>All Tasks</NavBtn>
           <NavBtn active={view === 'locations'} onClick={() => onViewChange('locations')}>📍 Locations</NavBtn>
+          <NavBtn active={view === 'persons'} onClick={() => onViewChange('persons')}>👤 People</NavBtn>
           <button
             onClick={onAdd}
             className="ml-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors"

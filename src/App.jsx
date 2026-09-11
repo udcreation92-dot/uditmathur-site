@@ -7,6 +7,7 @@ import GoalForm from './components/GoalForm'
 import GoalsPanel from './components/GoalsPanel'
 import Header from './components/Header'
 import LocationManager from './components/LocationManager'
+import PersonManager from './components/PersonManager'
 import LoginPage from './components/LoginPage'
 import { useNotifications } from './hooks/useNotifications'
 import { usePushSubscription } from './hooks/usePushSubscription'
@@ -16,6 +17,8 @@ export default function App() {
   const [view, setView] = useState('dashboard')
   const [tasks, setTasks] = useState([])
   const [locations, setLocations] = useState([])
+  const [persons, setPersons] = useState([])
+  const [timeLogs, setTimeLogs] = useState([])
   const [currentLocationId, setCurrentLocationId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [editTask, setEditTask] = useState(null)
@@ -45,7 +48,7 @@ export default function App() {
       clearTimeout(timeout)
       setSession(session)
       setAuthChecked(true)
-      if (session) { fetchTasks(); fetchLocations(); fetchAppState() }
+      if (session) { fetchTasks(); fetchLocations(); fetchPersons(); fetchTimeLogs(); fetchAppState() }
       else setLoading(false)
     }).catch(() => {
       clearTimeout(timeout)
@@ -56,14 +59,16 @@ export default function App() {
     // Listen for login/logout
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
-      if (session) { fetchTasks(); fetchLocations(); fetchAppState() }
-      else { setTasks([]); setLocations([]) }
+      if (session) { fetchTasks(); fetchLocations(); fetchPersons(); fetchTimeLogs(); fetchAppState() }
+      else { setTasks([]); setLocations([]); setPersons([]); setTimeLogs([]) }
     })
 
     const channel = supabase
       .channel('tasks-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, fetchTasks)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'locations' }, fetchLocations)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'persons' }, fetchPersons)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'task_time_logs' }, fetchTimeLogs)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_state' }, fetchAppState)
       .subscribe()
 
@@ -87,6 +92,25 @@ export default function App() {
     if (data) setLocations(data)
   }
 
+  async function fetchPersons() {
+    const { data } = await supabase
+      .from('persons')
+      .select('*')
+      .order('name', { ascending: true })
+    if (data) setPersons(data)
+  }
+
+  // Today's time-tracking logs (plus any still-running interval).
+  async function fetchTimeLogs() {
+    const start = new Date(); start.setHours(0, 0, 0, 0)
+    const { data } = await supabase
+      .from('task_time_logs')
+      .select('*')
+      .or(`started_at.gte.${start.toISOString()},ended_at.is.null`)
+      .order('started_at', { ascending: true })
+    setTimeLogs(data || [])
+  }
+
   async function fetchAppState() {
     const { data } = await supabase.from('app_state').select('value').eq('key', 'current_location_id').maybeSingle()
     setCurrentLocationId(data?.value || null)
@@ -105,13 +129,54 @@ export default function App() {
   function openEdit(task) { setEditTask(task); setAddParentId(null); setShowForm(true) }
   function closeForm() { setShowForm(false); setEditTask(null); setAddParentId(null) }
 
+  // Close the single running time-log interval, booking its duration. Returns the closed log.
+  async function closeOpenLog(reason) {
+    const { data: open } = await supabase
+      .from('task_time_logs')
+      .select('id, started_at, task_id')
+      .is('ended_at', null)
+      .limit(1)
+      .maybeSingle()
+    if (!open) return null
+    const ended = new Date()
+    const dur = Math.max(0, Math.round((ended - new Date(open.started_at)) / 1000))
+    await supabase.from('task_time_logs')
+      .update({ ended_at: ended.toISOString(), duration_seconds: dur, ended_reason: reason })
+      .eq('id', open.id)
+    return open
+  }
+
+  // Start (or resume) the timer for a task. Auto-pauses whatever else is running.
+  async function startTimer(task) {
+    await closeOpenLog('paused')
+    await supabase.from('task_time_logs').insert({
+      task_id: task.id,
+      task_title: task.title,
+      started_at: new Date().toISOString(),
+    })
+    if (!task.is_recurring && task.status !== 'completed') {
+      await supabase.from('tasks').update({ status: 'in_progress' }).eq('id', task.id)
+    }
+    fetchTimeLogs(); fetchTasks()
+  }
+
+  // Pause the running timer (books the interval, leaves the task open).
+  async function pauseTimer() {
+    await closeOpenLog('paused')
+    fetchTimeLogs()
+  }
+
   async function completeTask(task) {
+    // If this task's timer is running, stop it and book the interval as completed.
+    const open = timeLogs.find(l => !l.ended_at)
+    if (open && open.task_id === task.id) await closeOpenLog('completed')
+
     if (task.is_recurring) {
       await supabase.from('tasks').update({ last_completed_at: new Date().toISOString() }).eq('id', task.id)
     } else {
       await supabase.from('tasks').update({ status: 'completed' }).eq('id', task.id)
     }
-    fetchTasks()
+    fetchTasks(); fetchTimeLogs()
   }
 
   async function deleteTask(id) {
@@ -126,7 +191,23 @@ export default function App() {
     await supabase.auth.signOut()
   }
 
-  const cardProps = { tasks, locations, onEdit: openEdit, onComplete: completeTask, onDelete: deleteTask }
+  // Timer-derived values passed to the dashboard cards.
+  const runningLog = timeLogs.find(l => !l.ended_at) || null
+  const trackedSecondsByTask = {}
+  for (const l of timeLogs) {
+    if (l.task_id && l.duration_seconds) {
+      trackedSecondsByTask[l.task_id] = (trackedSecondsByTask[l.task_id] || 0) + l.duration_seconds
+    }
+  }
+  const timerProps = {
+    runningTaskId: runningLog?.task_id || null,
+    runningSince: runningLog?.started_at || null,
+    trackedSecondsByTask,
+    onStartTimer: startTimer,
+    onPauseTimer: pauseTimer,
+  }
+
+  const cardProps = { tasks, locations, persons, onEdit: openEdit, onComplete: completeTask, onDelete: deleteTask }
 
   // Show spinner while auth is being checked
   if (!authChecked) return (
@@ -177,11 +258,13 @@ export default function App() {
             Loading…
           </div>
         ) : view === 'dashboard' ? (
-          <Dashboard {...cardProps} currentLocationId={currentLocationId} onArrive={arriveAt} onQuickSave={fetchTasks} onAddGoal={() => setShowGoalForm(true)} onAddStep={openAdd} />
+          <Dashboard {...cardProps} {...timerProps} currentLocationId={currentLocationId} onArrive={arriveAt} onQuickSave={fetchTasks} onAddGoal={() => setShowGoalForm(true)} onAddStep={openAdd} />
         ) : view === 'goals' ? (
           <GoalsPanel {...cardProps} onAddGoal={() => setShowGoalForm(true)} onAddStep={openAdd} />
         ) : view === 'all' ? (
-          <AllTasks {...cardProps} />
+          <AllTasks {...cardProps} {...timerProps} />
+        ) : view === 'persons' ? (
+          <PersonManager persons={persons} onUpdate={fetchPersons} />
         ) : (
           <LocationManager locations={locations} onUpdate={fetchLocations} />
         )}
@@ -222,7 +305,7 @@ export default function App() {
       </nav>
 
       {showForm && (
-        <TaskForm task={editTask} tasks={tasks} locations={locations} defaultParentId={addParentId} onClose={closeForm} onSave={fetchTasks} />
+        <TaskForm task={editTask} tasks={tasks} locations={locations} persons={persons} defaultParentId={addParentId} onClose={closeForm} onSave={fetchTasks} />
       )}
 
       {showGoalForm && (

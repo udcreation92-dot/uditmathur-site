@@ -287,6 +287,11 @@ export function taskLocationIds(task) {
   return task.location_id ? [task.location_id] : []
 }
 
+// A task's associated person ids (multi-person). Empty array = nobody in particular.
+export function taskPersonIds(task) {
+  return Array.isArray(task.person_ids) ? task.person_ids : []
+}
+
 // Presence: does this task belong to where I am right now?
 // currentLocationId null/undefined = no location chosen -> everything matches (no filter).
 // Otherwise: tasks whose location set INCLUDES it, plus location-less "anywhere" tasks.

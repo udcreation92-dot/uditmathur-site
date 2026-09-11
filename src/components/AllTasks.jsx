@@ -9,7 +9,15 @@ const STATUS_LABELS = {
   cancelled: 'Cancelled',
 }
 
-export default function AllTasks({ tasks, locations = [], onEdit, onComplete, onDelete }) {
+export default function AllTasks({ tasks, locations = [], persons = [], onEdit, onComplete, onDelete, runningTaskId = null, runningSince = null, trackedSecondsByTask = {}, onStartTimer, onPauseTimer }) {
+  // Per-card timer props (mirrors Dashboard).
+  const timerFor = (t) => ({
+    runningSince: runningTaskId === t.id ? runningSince : null,
+    trackedSeconds: trackedSecondsByTask[t.id] || 0,
+    onStartTimer,
+    onPauseTimer,
+  })
+
   const [filter, setFilter] = useState('all')
 
   const filtered = filter === 'all'
@@ -55,7 +63,7 @@ export default function AllTasks({ tasks, locations = [], onEdit, onComplete, on
       {filter === 'all' || filter === 'recurring'
         ? <div className="space-y-3">
             {filtered.map(t => (
-              <TaskCard key={t.id} task={t} tasks={tasks} locations={locations} onEdit={onEdit} onComplete={onComplete} onDelete={onDelete} />
+              <TaskCard key={t.id} task={t} tasks={tasks} locations={locations} persons={persons} onEdit={onEdit} onComplete={onComplete} onDelete={onDelete} {...timerFor(t)} />
             ))}
           </div>
         : Object.entries(grouped).map(([status, group]) => (
@@ -65,7 +73,7 @@ export default function AllTasks({ tasks, locations = [], onEdit, onComplete, on
               </h3>
               <div className="space-y-3">
                 {group.map(t => (
-                  <TaskCard key={t.id} task={t} tasks={tasks} locations={locations} onEdit={onEdit} onComplete={onComplete} onDelete={onDelete} />
+                  <TaskCard key={t.id} task={t} tasks={tasks} locations={locations} persons={persons} onEdit={onEdit} onComplete={onComplete} onDelete={onDelete} {...timerFor(t)} />
                 ))}
               </div>
             </div>
