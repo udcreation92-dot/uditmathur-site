@@ -302,6 +302,10 @@ export default function App() {
           <span className="text-lg leading-none">📍</span>
           Locations
         </MobileNavBtn>
+        <MobileNavBtn active={view === 'persons'} onClick={() => setView('persons')}>
+          <span className="text-lg leading-none">👤</span>
+          People
+        </MobileNavBtn>
       </nav>
 
       {showForm && (
