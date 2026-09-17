@@ -29,3 +29,6 @@ accounts/dist/
 skills-lock.json
 .mcp.json
 dist-local/
+
+# Root lockfile removed: Windows-generated locks fail `npm ci` on Linux CI; let CI npm install resolve fresh
+package-lock.json
