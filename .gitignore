@@ -12,6 +12,7 @@ trading/backend/.shoonya_ip_state.json
 # Trading dashboard — local-only, never pushed to GitHub/Cloudflare
 trading/
 src/trading/
+src/news/
 .scalps.db
 
 # Dependencies

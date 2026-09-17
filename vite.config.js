@@ -10,6 +10,7 @@ export default defineConfig({
       input: {
         task: resolve(__dirname, 'task.html'),
         trading: resolve(__dirname, 'trading.html'),
+        news: resolve(__dirname, 'news.html'),
       },
     }
   }
