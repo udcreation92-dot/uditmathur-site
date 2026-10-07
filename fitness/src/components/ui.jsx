@@ -1,6 +1,6 @@
-export function Card({ icon, title, right, children, className = '' }) {
+export function Card({ icon, title, right, children, className = '', id }) {
   return (
-    <section className={`card ${className}`}>
+    <section id={id} className={`card scroll-mt-sticky ${className}`}>
       <div className="card-h">
         <span className="ico">{icon}</span>
         <h2 className="flex-1">{title}</h2>
@@ -17,9 +17,9 @@ export function Check({ checked, onChange, label, className = '' }) {
     <button
       type="button"
       onClick={() => onChange(!checked)}
-      className={`flex items-center gap-2 text-left text-sm font-medium ${className}`}
+      className={`flex items-center gap-2.5 min-h-[2.75rem] text-left text-sm font-medium ${className}`}
     >
-      <span className={`grid place-items-center w-6 h-6 shrink-0 rounded-md border-2 text-sm font-bold
+      <span className={`grid place-items-center w-7 h-7 shrink-0 rounded-lg border-2 text-base font-bold
         ${checked ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-neutral-400'}`}>
         {checked ? '✓' : ''}
       </span>
@@ -34,7 +34,7 @@ export function YesNo({ value, onChange, yes = 'Yes', no = 'No' }) {
     <button
       type="button"
       onClick={() => onChange(value === v ? null : v)}
-      className={`px-3 py-1.5 text-sm font-semibold rounded-lg border ${value === v ? on : 'bg-white border-neutral-300 text-neutral-600'}`}
+      className={`min-w-[4.25rem] h-11 sm:h-9 px-3 text-sm font-semibold rounded-xl border active:scale-[0.97] ${value === v ? on : 'bg-white border-neutral-300 text-neutral-600'}`}
     >{txt}</button>
   )
   return (
@@ -45,16 +45,16 @@ export function YesNo({ value, onChange, yes = 'Yes', no = 'No' }) {
   )
 }
 
-// 1–5 rating
+// 1–5 rating — stretches full width on phones
 export function Rating({ value, onChange }) {
   return (
-    <div className="flex gap-1.5">
+    <div className="flex gap-1.5 w-full sm:w-auto">
       {[1, 2, 3, 4, 5].map((n) => (
         <button
           key={n}
           type="button"
           onClick={() => onChange(value === n ? null : n)}
-          className={`w-9 h-9 rounded-lg text-sm font-bold border ${value === n ? 'bg-ink text-white border-ink' : 'bg-white border-neutral-300 text-neutral-600'}`}
+          className={`flex-1 sm:flex-none sm:w-9 h-11 sm:h-9 rounded-xl text-base sm:text-sm font-bold border active:scale-[0.97] ${value === n ? 'bg-ink text-white border-ink' : 'bg-white border-neutral-300 text-neutral-600'}`}
         >{n}</button>
       ))}
     </div>
@@ -70,12 +70,14 @@ export function Field({ label, children, className = '' }) {
   )
 }
 
-export function Row({ label, hint, children }) {
+// stack: label above a full-width control on phones (used for 1–5 ratings)
+export function Row({ label, hint, children, stack = false }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-neutral-100 first:border-t-0">
-      <div className="text-sm font-semibold">
+    <div className={`flex gap-2 px-4 py-3 border-t border-neutral-100 first:border-t-0
+      ${stack ? 'flex-col sm:flex-row sm:items-center sm:justify-between' : 'items-center justify-between'}`}>
+      <div className="text-sm font-semibold min-w-0">
         {label}
-        {hint && <div className="text-xs font-normal text-neutral-500">{hint}</div>}
+        {hint && <span className="ml-1.5 text-xs font-normal text-neutral-500">{hint}</span>}
       </div>
       {children}
     </div>

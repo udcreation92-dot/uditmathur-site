@@ -14,6 +14,7 @@ export default function App() {
   const [session, setSession] = useState(null) // { code, role, client?, name? }
   const [booting, setBooting] = useState(!!store.get())
   const [open, setOpen] = useState(null)       // trainer: { client, tab }
+  const [bootErr, setBootErr] = useState('')
 
   const login = async (code, remember = true) => {
     const r = await api.login(code)
@@ -22,15 +23,37 @@ export default function App() {
     setSession({ ...r, code: clean })
   }
 
-  useEffect(() => {
+  // Auto-login with the saved code. Only forget it if the server rejects the code —
+  // a network blip (gym wifi) must not sign the client out.
+  const boot = () => {
     const saved = store.get()
-    if (!saved) return
-    login(saved).catch(() => store.clear()).finally(() => setBooting(false))
-  }, [])
+    if (!saved) { setBooting(false); return }
+    setBooting(true); setBootErr('')
+    login(saved)
+      .then(() => setBooting(false))
+      .catch((e) => {
+        if (/invalid code/i.test(e.message)) { store.clear(); setBooting(false) }
+        else setBootErr(e.message || 'Could not connect')
+      })
+  }
+  useEffect(boot, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const logout = () => { store.clear(); setSession(null); setOpen(null) }
 
-  if (booting) return <div className="min-h-screen grid place-items-center text-neutral-500 text-sm">Loading…</div>
+  if (booting) {
+    return (
+      <div className="min-h-screen grid place-items-center px-6 text-center">
+        {bootErr ? (
+          <div className="space-y-3">
+            <div className="text-3xl">📶</div>
+            <p className="text-sm text-neutral-600">Couldn’t reach the server. Check your internet connection.</p>
+            <button className="btn-primary w-full" onClick={boot}>Try again</button>
+            <button className="text-xs text-neutral-400 underline" onClick={() => { store.clear(); setBooting(false) }}>Use a different code</button>
+          </div>
+        ) : <span className="text-neutral-500 text-sm">Loading…</span>}
+      </div>
+    )
+  }
   if (!session) return <Login onLogin={login} />
 
   return (
@@ -69,7 +92,7 @@ export default function App() {
 
 function TopBar({ role, onLogout }) {
   return (
-    <header className="bg-ink text-white border-b border-neutral-800">
+    <header className="bg-ink text-white border-b border-neutral-800 pt-safe">
       <div className="max-w-5xl mx-auto px-4 py-2 flex items-center gap-3">
         <span className="grid place-items-center w-8 h-8 rounded-lg bg-brand text-lg">💪</span>
         <span className="font-head text-lg font-bold uppercase tracking-wide">
@@ -106,7 +129,7 @@ function Login({ onLogin }) {
           <h1 className="mt-3 font-head text-3xl font-bold uppercase leading-none">
             Fitness <span className="text-brand">Tracker</span>
           </h1>
-          <p className="mt-2 text-[0.65rem] tracking-[0.3em] uppercase text-neutral-400">Discipline × Consistency × Results</p>
+          <p className="mt-2 text-[0.6rem] tracking-[0.2em] whitespace-nowrap uppercase text-neutral-400">Discipline × Consistency × Results</p>
         </div>
         <div className="p-6 space-y-4">
           <label className="block">

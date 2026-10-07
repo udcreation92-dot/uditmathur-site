@@ -1,7 +1,18 @@
 import { useEffect, useState } from 'react'
 import { Card, Check, YesNo, Rating, Row } from './ui'
 import { MEALS, MACROS, TRAINING_TYPES, DEFAULT_SPLIT, num } from '../lib/constants'
-import { addDays, dow, fmtDay, monthOf, today, weekDays, DOW, parse, sleepHours } from '../lib/dates'
+import { addDays, addMonths, dow, fmtDay, monthOf, today, weekDays, DOW, parse, sleepHours } from '../lib/dates'
+
+const hasAny = (o) => !!o && Object.values(o).some((v) =>
+  v !== null && v !== '' && v !== undefined && !(typeof v === 'object' && !Array.isArray(v) && !hasAny(v)) && !(Array.isArray(v) && !v.length))
+
+const SECTIONS = [
+  { id: 'meals', label: 'Meals', icon: '🍴' },
+  { id: 'macros', label: 'Macros', icon: '📊' },
+  { id: 'habits', label: 'Habits', icon: '✅' },
+  { id: 'sleep', label: 'Sleep', icon: '🛏️' },
+  { id: 'training', label: 'Training', icon: '🏋️' },
+]
 
 export default function DayView({ date, setDate, data, isTrainer }) {
   const { days, plans, client, ensureMonth, setDaySection } = data
@@ -10,48 +21,64 @@ export default function DayView({ date, setDate, data, isTrainer }) {
   useEffect(() => {
     ensureMonth(monthOf(week[0]))
     ensureMonth(monthOf(week[6]))
+    ensureMonth(addMonths(monthOf(date), -1)) // for "copy last session"
   }, [week[0], ensureMonth]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const day = days[date] || {}
   const set = (section) => (value) => setDaySection(date, section, value)
+  const jump = (id) => document.getElementById(`sec-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
   return (
-    <div className="space-y-4">
-      {/* date navigator */}
-      <div className="card p-3">
-        <div className="flex items-center gap-2">
-          <button className="btn-ghost px-3" onClick={() => setDate(addDays(date, -1))}>◀</button>
-          <div className="flex-1 text-center">
-            <div className="font-head text-xl font-semibold uppercase">{fmtDay(date)}</div>
+    <div className="space-y-3 sm:space-y-4">
+      {/* sticky date + section bar */}
+      <div className="sticky top-0 z-20 -mx-3 sm:mx-0 px-3 sm:px-0 pt-2 pb-2 bg-neutral-100/95 backdrop-blur">
+        <div className="card p-1.5 flex items-center gap-1">
+          <button aria-label="Previous day" className="btn-ghost border-0 w-11 px-0 text-lg" onClick={() => setDate(addDays(date, -1))}>‹</button>
+          <div className="flex-1 text-center leading-tight">
+            <div className="font-head text-lg font-semibold uppercase">{date === today() ? 'Today · ' : ''}{fmtDay(date)}</div>
             {date !== today() && (
-              <button className="text-xs text-brand font-semibold" onClick={() => setDate(today())}>Jump to today</button>
+              <button className="text-xs text-brand font-semibold" onClick={() => setDate(today())}>Back to today</button>
             )}
           </div>
-          <button className="btn-ghost px-3" onClick={() => setDate(addDays(date, 1))}>▶</button>
+          <button aria-label="Next day" className="btn-ghost border-0 w-11 px-0 text-lg" onClick={() => setDate(addDays(date, 1))}>›</button>
         </div>
-        <div className="grid grid-cols-7 gap-1 mt-3">
-          {week.map((d) => {
-            const filled = days[d] && Object.keys(days[d]).length > 0
+        <div className="flex gap-1.5 overflow-x-auto no-scrollbar mt-2">
+          {SECTIONS.map((s) => {
+            const done = s.id === 'training'
+              ? !!(day.training?.done || day.training?.notes?.trim() || day.training?.exercises?.some((x) => x.name?.trim()))
+              : hasAny(day[s.id])
             return (
-              <button
-                key={d}
-                onClick={() => setDate(d)}
-                className={`rounded-lg py-1.5 text-center ${d === date ? 'bg-ink text-white' : d === today() ? 'bg-red-50' : 'bg-neutral-50'}`}
-              >
-                <div className="text-[0.65rem] uppercase opacity-70">{DOW[dow(d)]}</div>
-                <div className="text-sm font-bold">{parse(d).getDate()}</div>
-                <div className={`mx-auto mt-0.5 w-1.5 h-1.5 rounded-full ${filled ? 'bg-emerald-500' : 'bg-transparent'}`} />
+              <button key={s.id} onClick={() => jump(s.id)} className={`chip ${done ? '!border-emerald-500 !text-emerald-700 !bg-emerald-50' : ''}`}>
+                {done ? '✓' : s.icon} {s.label}
               </button>
             )
           })}
         </div>
       </div>
 
+      {/* week strip */}
+      <div className="grid grid-cols-7 gap-1">
+        {week.map((d) => {
+          const filled = days[d] && Object.keys(days[d]).length > 0
+          return (
+            <button
+              key={d}
+              onClick={() => setDate(d)}
+              className={`rounded-xl py-1.5 text-center border ${d === date ? 'bg-ink text-white border-ink' : d === today() ? 'bg-red-50 border-red-200' : 'bg-white border-neutral-200'}`}
+            >
+              <div className="text-[0.62rem] uppercase opacity-70">{DOW[dow(d)]}</div>
+              <div className="text-base font-bold leading-tight">{parse(d).getDate()}</div>
+              <div className={`mx-auto mt-0.5 w-1.5 h-1.5 rounded-full ${filled ? 'bg-emerald-500' : 'bg-transparent'}`} />
+            </button>
+          )
+        })}
+      </div>
+
       <MealsCard date={date} meals={day.meals || {}} plan={plans[date] || {}} onChange={set('meals')} isTrainer={isTrainer} data={data} />
       <MacrosCard macros={day.macros || {}} onChange={set('macros')} />
       <HabitsCard habits={day.habits || {}} onChange={set('habits')} client={client} />
       <SleepCard sleep={day.sleep || {}} onChange={set('sleep')} />
-      <TrainingCard date={date} training={day.training || {}} onChange={set('training')} />
+      <TrainingCard date={date} training={day.training || {}} onChange={set('training')} days={days} />
     </div>
   )
 }
@@ -60,7 +87,7 @@ export default function DayView({ date, setDate, data, isTrainer }) {
 function MealsCard({ date, meals, plan, onChange, isTrainer, data }) {
   const setMeal = (no, patch) => onChange({ ...meals, [no]: { ...(meals[no] || {}), ...patch } })
   return (
-    <Card icon="🍴" title="Nutrition">
+    <Card id="sec-meals" icon="🍴" title="Nutrition">
       <div className="divide-y divide-neutral-200">
         {MEALS.map((m) => {
           const v = meals[m.no] || {}
@@ -75,19 +102,19 @@ function MealsCard({ date, meals, plan, onChange, isTrainer, data }) {
                   {isTrainer
                     ? <PlanInput date={date} no={m.no} plan={plan} data={data} />
                     : (
-                      <div className="text-sm mt-1">
-                        <span className="text-[0.65rem] font-bold uppercase tracking-wider text-neutral-500">Planned meal: </span>
-                        {plan[m.no]?.trim() ? <span className="whitespace-pre-wrap">{plan[m.no]}</span> : <span className="italic text-neutral-400">Not set by trainer</span>}
+                      <div className="mt-1 rounded-xl bg-white/70 px-3 py-2 text-[0.95rem]">
+                        <div className="text-[0.62rem] font-bold uppercase tracking-wider text-neutral-500">Planned meal</div>
+                        {plan[m.no]?.trim() ? <div className="whitespace-pre-wrap">{plan[m.no]}</div> : <div className="italic text-neutral-400">Not set by trainer</div>}
                       </div>
                     )}
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setMeal(m.no, { taken: v.taken === true ? null : true })}
                   className={`btn border ${v.taken === true ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-neutral-300'}`}
-                >✓ Taken as planned</button>
+                >✓ Taken</button>
                 <button
                   type="button"
                   onClick={() => setMeal(m.no, { taken: v.taken === false ? null : false })}
@@ -98,7 +125,7 @@ function MealsCard({ date, meals, plan, onChange, isTrainer, data }) {
                 <textarea
                   className="inp"
                   rows={2}
-                  placeholder="If not taken, what did you eat?"
+                  placeholder="What did you eat instead?"
                   value={v.ate || ''}
                   onChange={(e) => setMeal(m.no, { ate: e.target.value })}
                 />
@@ -135,18 +162,18 @@ function PlanInput({ date, no, plan, data }) {
 function MacrosCard({ macros, onChange }) {
   const set = (k, val) => onChange({ ...macros, [k]: val })
   return (
-    <Card icon="📊" title="Daily macros & summary">
+    <Card id="sec-macros" icon="📊" title="Daily macros">
       <div className="p-4 grid grid-cols-2 sm:grid-cols-5 gap-3">
-        {MACROS.map((m) => (
-          <label key={m.k} className="block">
+        {MACROS.map((m, i) => (
+          <label key={m.k} className={`block ${i === 0 ? 'col-span-2 sm:col-span-1' : ''}`}>
             <span className="lbl">{m.icon} {m.label} ({m.unit})</span>
-            <input className="inp" type="number" inputMode="decimal" min="0"
+            <input className="inp" type="number" inputMode="decimal" min="0" enterKeyHint="next"
               value={macros[m.k] ?? ''} onChange={(e) => set(m.k, e.target.value)} />
           </label>
         ))}
         <label className="block col-span-2 sm:col-span-5">
           <span className="lbl">💊 Supplementation</span>
-          <input className="inp" placeholder="e.g. Whey 1 scoop, Creatine 5g, Multivitamin"
+          <input className="inp" placeholder="e.g. Whey 1 scoop, Creatine 5g"
             value={macros.supp || ''} onChange={(e) => set('supp', e.target.value)} />
         </label>
       </div>
@@ -159,28 +186,42 @@ function HabitsCard({ habits, onChange, client }) {
   const set = (k, val) => onChange({ ...habits, [k]: val })
   const stepsTarget = client?.steps_target
   const waterTarget = Number(client?.water_target || 3)
+  const water = num(habits.water) || 0
   const stepsHit = stepsTarget && num(habits.steps) >= stepsTarget
-  const waterHit = num(habits.water) >= waterTarget
+  const waterHit = water >= waterTarget
+  const addWater = (l) => set('water', String(Math.round((water + l) * 100) / 100))
   return (
-    <Card icon="✅" title="Daily habits">
-      <Row label="👟 Steps" hint={stepsTarget ? `Target: ${stepsTarget.toLocaleString('en-IN')}` : 'No target set'}>
+    <Card id="sec-habits" icon="✅" title="Daily habits">
+      <Row label="👟 Steps" hint={stepsTarget ? `target ${stepsTarget.toLocaleString('en-IN')}` : ''}>
         <div className="flex items-center gap-2">
-          <input className="inp w-28" type="number" inputMode="numeric" min="0" placeholder="0"
+          <input className="inp w-32 text-right" type="number" inputMode="numeric" min="0" placeholder="0"
             value={habits.steps ?? ''} onChange={(e) => set('steps', e.target.value)} />
-          <span className={`text-lg ${stepsHit ? '' : 'opacity-20'}`}>✅</span>
+          <span className={`text-xl ${stepsHit ? '' : 'opacity-20'}`}>✅</span>
         </div>
       </Row>
-      <Row label="💧 Water (litres)" hint={`Target: ${waterTarget}+ L`}>
-        <div className="flex items-center gap-2">
-          <input className="inp w-28" type="number" inputMode="decimal" min="0" step="0.25" placeholder="0"
-            value={habits.water ?? ''} onChange={(e) => set('water', e.target.value)} />
-          <span className={`text-lg ${waterHit ? '' : 'opacity-20'}`}>✅</span>
+      <div className="px-4 py-3 border-t border-neutral-100 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm font-semibold">💧 Water <span className="ml-1 text-xs font-normal text-neutral-500">target {waterTarget}+ L</span></div>
+          <div className="flex items-center gap-2">
+            <input className="inp w-24 text-right" type="number" inputMode="decimal" min="0" step="0.25" placeholder="0"
+              value={habits.water ?? ''} onChange={(e) => set('water', e.target.value)} />
+            <span className="text-sm text-neutral-500">L</span>
+            <span className={`text-xl ${waterHit ? '' : 'opacity-20'}`}>✅</span>
+          </div>
         </div>
-      </Row>
+        <div className="flex gap-2">
+          {[0.25, 0.5, 1].map((l) => (
+            <button key={l} type="button" className="chip flex-1 justify-center" onClick={() => addWater(l)}>+{l < 1 ? `${l * 1000} ml` : '1 L'}</button>
+          ))}
+        </div>
+        <div className="h-1.5 rounded-full bg-neutral-100 overflow-hidden">
+          <div className="h-full bg-sky-500 transition-all" style={{ width: `${Math.min(100, (water / waterTarget) * 100)}%` }} />
+        </div>
+      </div>
       <Row label="💊 Supplements taken"><YesNo value={habits.supplements ?? null} onChange={(v) => set('supplements', v)} /></Row>
       <Row label="🚫 No cheat meal"><YesNo value={habits.no_cheat ?? null} onChange={(v) => set('no_cheat', v)} /></Row>
       <Row label="🪷 Stress under control"><YesNo value={habits.stress_ok ?? null} onChange={(v) => set('stress_ok', v)} /></Row>
-      <Row label="🙂 Mood / energy" hint="1 = low, 5 = great"><Rating value={habits.mood ?? null} onChange={(v) => set('mood', v)} /></Row>
+      <Row stack label="🙂 Mood / energy" hint="1 low – 5 great"><Rating value={habits.mood ?? null} onChange={(v) => set('mood', v)} /></Row>
       <div className="px-4 pb-4 pt-1">
         <span className="lbl">📝 Daily notes</span>
         <textarea className="inp" rows={2} value={habits.notes || ''} onChange={(e) => set('notes', e.target.value)} />
@@ -195,40 +236,44 @@ function SleepCard({ sleep, onChange }) {
   const hrs = sleepHours(sleep.bed, sleep.wake)
   const goal = hrs != null && hrs >= 7 && hrs <= 9
   return (
-    <Card icon="🛏️" title="Sleep tracker">
-      <div className="p-4 grid grid-cols-3 gap-3 border-b border-neutral-100">
+    <Card id="sec-sleep" icon="🛏️" title="Sleep">
+      <div className="p-4 grid grid-cols-2 gap-3">
         <label className="block"><span className="lbl">🕙 Bed time</span>
           <input className="inp" type="time" value={sleep.bed || ''} onChange={(e) => set('bed', e.target.value)} /></label>
         <label className="block"><span className="lbl">⏰ Wake time</span>
           <input className="inp" type="time" value={sleep.wake || ''} onChange={(e) => set('wake', e.target.value)} /></label>
-        <div>
-          <span className="lbl">Total sleep</span>
-          <div className={`rounded-lg px-3 py-2 text-sm font-bold ${hrs == null ? 'bg-neutral-50 text-neutral-400' : goal ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-            {hrs == null ? '—' : `${hrs} h ${goal ? '✓' : ''}`}
-          </div>
+        <div className={`col-span-2 flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-semibold
+          ${hrs == null ? 'bg-neutral-50 text-neutral-400' : goal ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+          <span>Total sleep: {hrs == null ? '—' : `${hrs} h`}</span>
+          <span>{hrs == null ? 'Goal 7–9 h' : goal ? '🎯 Goal met' : '❌ Outside 7–9 h'}</span>
         </div>
       </div>
-      <Row label="🎯 Sleep goal (7–9 hrs)"><span className="text-sm font-semibold">{hrs == null ? '—' : goal ? '✅ Met' : '❌ Missed'}</span></Row>
-      <Row label="📶 Sleep quality" hint="1–5"><Rating value={sleep.quality ?? null} onChange={(v) => set('quality', v)} /></Row>
+      <Row stack label="📶 Sleep quality" hint="1–5"><Rating value={sleep.quality ?? null} onChange={(v) => set('quality', v)} /></Row>
       <Row label="🌙 Felt refreshed"><YesNo value={sleep.refreshed ?? null} onChange={(v) => set('refreshed', v)} /></Row>
-      <Row label="🔋 Energy level" hint="1–5"><Rating value={sleep.energy ?? null} onChange={(v) => set('energy', v)} /></Row>
-      <Row label="🧠 Stress level" hint="1–5"><Rating value={sleep.stress ?? null} onChange={(v) => set('stress', v)} /></Row>
+      <Row stack label="🔋 Energy level" hint="1–5"><Rating value={sleep.energy ?? null} onChange={(v) => set('energy', v)} /></Row>
+      <Row stack label="🧠 Stress level" hint="1–5"><Rating value={sleep.stress ?? null} onChange={(v) => set('stress', v)} /></Row>
     </Card>
   )
 }
 
 // ── Training ─────────────────────────────────────────────────────────────────
-function TrainingCard({ date, training, onChange }) {
+function TrainingCard({ date, training, onChange, days }) {
   const type = training.type || DEFAULT_SPLIT[dow(date)]
   const meta = TRAINING_TYPES.find((t) => t.k === type)
   const exercises = training.exercises || []
   const set = (patch) => onChange({ ...training, type, ...patch })
   const setEx = (i, patch) => set({ exercises: exercises.map((x, j) => (j === i ? { ...x, ...patch } : x)) })
 
+  // most recent earlier session of the same type that has exercises
+  const last = Object.keys(days)
+    .filter((d) => d < date && days[d]?.training?.type === type && days[d].training.exercises?.some((x) => x.name))
+    .sort().pop()
+  const copyLast = () => set({ exercises: days[last].training.exercises.filter((x) => x.name).map((x) => ({ ...x })) })
+
   return (
-    <Card icon="🏋️" title="Training">
+    <Card id="sec-training" icon="🏋️" title="Training">
       <div className="p-4 space-y-4">
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
           {TRAINING_TYPES.map((t) => (
             <button
               key={t.k}
@@ -238,26 +283,36 @@ function TrainingCard({ date, training, onChange }) {
             >{t.icon} {t.label}</button>
           ))}
         </div>
-        <Check checked={!!training.done} onChange={(v) => set({ done: v })} label="Done" />
+        <Check checked={!!training.done} onChange={(v) => set({ done: v })} label={<span className="text-base">Session done</span>} />
 
         {meta?.sets && (
-          <div>
-            <div className="grid grid-cols-[1fr_3.5rem_3.5rem_4.5rem_1.75rem] gap-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-neutral-500 mb-1">
-              <span>Exercise</span><span>Sets</span><span>Reps</span><span>Weight kg</span><span />
-            </div>
-            <div className="space-y-1.5">
-              {exercises.map((x, i) => (
-                <div key={i} className="grid grid-cols-[1fr_3.5rem_3.5rem_4.5rem_1.75rem] gap-1.5">
-                  <input className="inp px-2" placeholder="e.g. Bench press" value={x.name || ''} onChange={(e) => setEx(i, { name: e.target.value })} />
-                  <input className="inp px-2" inputMode="numeric" value={x.sets || ''} onChange={(e) => setEx(i, { sets: e.target.value })} />
-                  <input className="inp px-2" inputMode="text" placeholder="10" value={x.reps || ''} onChange={(e) => setEx(i, { reps: e.target.value })} />
-                  <input className="inp px-2" inputMode="decimal" value={x.weight || ''} onChange={(e) => setEx(i, { weight: e.target.value })} />
-                  <button type="button" className="text-neutral-400 hover:text-brand" title="Remove"
+          <div className="space-y-2">
+            {exercises.map((x, i) => (
+              <div key={i} className="rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 sm:p-2 sm:grid sm:grid-cols-[1fr_4rem_4rem_5rem_2.5rem] sm:gap-2 sm:items-end">
+                <div className="flex items-center gap-2 sm:contents">
+                  <label className="flex-1 sm:block">
+                    <span className="lbl sm:hidden">Exercise {i + 1}</span>
+                    <input className="inp" placeholder="e.g. Bench press" value={x.name || ''} onChange={(e) => setEx(i, { name: e.target.value })} />
+                  </label>
+                  <button type="button" aria-label="Remove exercise" className="self-end sm:order-last w-10 h-11 sm:h-9 grid place-items-center rounded-xl text-neutral-400 hover:text-brand"
                     onClick={() => set({ exercises: exercises.filter((_, j) => j !== i) })}>✕</button>
                 </div>
-              ))}
+                <div className="grid grid-cols-3 gap-2 mt-2 sm:mt-0 sm:contents">
+                  <label className="block"><span className="lbl">Sets</span>
+                    <input className="inp text-center" inputMode="numeric" value={x.sets || ''} onChange={(e) => setEx(i, { sets: e.target.value })} /></label>
+                  <label className="block"><span className="lbl">Reps</span>
+                    <input className="inp text-center" inputMode="text" placeholder="10" value={x.reps || ''} onChange={(e) => setEx(i, { reps: e.target.value })} /></label>
+                  <label className="block"><span className="lbl">Kg</span>
+                    <input className="inp text-center" inputMode="decimal" value={x.weight || ''} onChange={(e) => setEx(i, { weight: e.target.value })} /></label>
+                </div>
+              </div>
+            ))}
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className="btn-ghost flex-1 sm:flex-none" onClick={() => set({ exercises: [...exercises, {}] })}>+ Add exercise</button>
+              {last && !exercises.some((x) => x.name) && (
+                <button type="button" className="btn-ghost flex-1 sm:flex-none" onClick={copyLast}>↺ Copy last {meta.label.toLowerCase()} ({fmtDay(last)})</button>
+              )}
             </div>
-            <button type="button" className="btn-ghost mt-2" onClick={() => set({ exercises: [...exercises, {}] })}>+ Add exercise</button>
           </div>
         )}
 

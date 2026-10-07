@@ -3,10 +3,16 @@
 @tailwind utilities;
 
 @layer base {
+  html { -webkit-text-size-adjust: 100%; }
   body {
     @apply bg-neutral-100 text-ink antialiased font-sans;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: none;
   }
-  input[type='number']::-webkit-inner-spin-button { opacity: 0.4; }
+  button { touch-action: manipulation; }
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type='number'] { -moz-appearance: textfield; }
 }
 
 @layer components {
@@ -22,16 +28,17 @@
   .card-h h2 {
     @apply font-head font-semibold uppercase tracking-wide text-lg;
   }
+  /* 16px on phones — anything smaller makes iOS Safari zoom in on focus */
   .inp {
-    @apply w-full rounded-lg bg-white border border-neutral-300 px-3 py-2 text-sm
+    @apply w-full rounded-xl bg-white border border-neutral-300 px-3 py-2.5 text-base sm:text-sm sm:py-2
            focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand;
   }
   .lbl {
     @apply block text-[0.7rem] font-semibold uppercase tracking-wider text-neutral-500 mb-1;
   }
   .btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold
-           transition-colors disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 min-h-[2.75rem] sm:min-h-[2.25rem]
+           text-sm font-semibold transition-colors active:scale-[0.97] disabled:opacity-50;
   }
   .btn-primary { @apply btn bg-brand text-white hover:bg-brand-dark; }
   .btn-dark    { @apply btn bg-ink text-white hover:bg-neutral-800; }
@@ -40,8 +47,19 @@
     @apply px-3 py-2 text-sm font-semibold whitespace-nowrap border-b-2 border-transparent text-neutral-500;
   }
   .tab-on { @apply border-brand text-ink; }
+  .chip {
+    @apply shrink-0 inline-flex items-center gap-1 rounded-full px-3 h-9 text-sm font-semibold border
+           bg-white border-neutral-300 text-neutral-700 active:scale-[0.97];
+  }
+  .chip-on { @apply bg-ink border-ink text-white; }
 }
 
 .pb-safe { padding-bottom: max(1.5rem, env(safe-area-inset-bottom)); }
+.pt-safe { padding-top: env(safe-area-inset-top); }
+/* room for the fixed bottom nav on phones */
+.pb-nav { padding-bottom: calc(5.5rem + env(safe-area-inset-bottom)); }
+@media (min-width: 768px) { .pb-nav { padding-bottom: 2rem; } }
+.bottom-nav { padding-bottom: env(safe-area-inset-bottom); }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
+.scroll-mt-sticky { scroll-margin-top: 7.5rem; }

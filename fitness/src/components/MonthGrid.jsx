@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { MEALS, MACROS, TRAINING_TYPES, num } from '../lib/constants'
 import { addMonths, fmtMonth, monthDays, monthOf, parse, sleepHours, today } from '../lib/dates'
 
@@ -79,23 +79,32 @@ export default function MonthGrid({ data, openDay }) {
   useEffect(() => { ensureMonth(month) }, [month, ensureMonth])
   const dates = monthDays(month)
   const t = today()
+  const scroller = useRef(null)
+
+  // bring today's column into view (phones only show ~8 days at once)
+  useEffect(() => {
+    const el = scroller.current
+    const th = el?.querySelector('[data-today]')
+    if (el && th) el.scrollLeft = Math.max(0, th.offsetLeft - el.clientWidth / 2)
+    else if (el) el.scrollLeft = 0
+  }, [month])
 
   return (
     <div className="space-y-3">
-      <div className="card p-3 flex items-center gap-2">
-        <button className="btn-ghost px-3" onClick={() => setMonth(addMonths(month, -1))}>◀</button>
-        <div className="flex-1 text-center font-head text-xl font-semibold uppercase">{fmtMonth(month)}</div>
-        <button className="btn-ghost px-3" onClick={() => setMonth(addMonths(month, 1))}>▶</button>
+      <div className="card p-1.5 flex items-center gap-1">
+        <button aria-label="Previous month" className="btn-ghost border-0 w-11 px-0 text-lg" onClick={() => setMonth(addMonths(month, -1))}>‹</button>
+        <div className="flex-1 text-center font-head text-lg font-semibold uppercase">{fmtMonth(month)}</div>
+        <button aria-label="Next month" className="btn-ghost border-0 w-11 px-0 text-lg" onClick={() => setMonth(addMonths(month, 1))}>›</button>
       </div>
 
-      <div className="card overflow-x-auto">
+      <div ref={scroller} className="card overflow-x-auto overscroll-x-contain">
         <table className="text-xs border-collapse min-w-max">
           <thead>
             <tr className="bg-ink text-white">
               <th className="sticky left-0 z-10 bg-ink text-left px-3 py-2 font-head uppercase tracking-wide text-sm">Date</th>
               {dates.map((d) => (
-                <th key={d} className={`w-8 px-0.5 py-2 font-bold ${d === t ? 'bg-brand' : ''}`}>
-                  <button className="w-full hover:underline" onClick={() => openDay(d)} title="Open this day">{parse(d).getDate()}</button>
+                <th key={d} data-today={d === t ? '' : undefined} className={`w-9 min-w-[2.25rem] px-0.5 py-2 font-bold ${d === t ? 'bg-brand' : ''}`}>
+                  <button className="w-full py-1 hover:underline" onClick={() => openDay(d)} title="Open this day">{parse(d).getDate()}</button>
                 </th>
               ))}
               <th className="px-2 py-2 font-head uppercase tracking-wide">Avg / ✓</th>
@@ -103,15 +112,15 @@ export default function MonthGrid({ data, openDay }) {
           </thead>
           {GROUPS(client).map((g) => (
             <tbody key={g.title}>
-              <tr><td colSpan={dates.length + 2} className={`${g.bg} sticky left-0 px-3 py-1 font-head font-semibold uppercase tracking-wide text-[0.8rem]`}>{g.title}</td></tr>
+              <tr><td colSpan={dates.length + 2} className={`${g.bg} py-1 font-head font-semibold uppercase tracking-wide text-[0.8rem]`}><span className="sticky left-0 inline-block px-3">{g.title}</span></td></tr>
               {g.rows.map((r) => (
                 <tr key={r.label} className="border-t border-neutral-100">
-                  <td className={`sticky left-0 z-10 ${g.bg} px-3 py-1.5 font-semibold whitespace-nowrap`}>{r.label}</td>
+                  <td title={r.label} className={`sticky left-0 z-10 ${g.bg} px-2 sm:px-3 py-2 font-semibold whitespace-nowrap max-w-[7.5rem] sm:max-w-none truncate shadow-[2px_0_4px_-2px_rgba(0,0,0,0.15)]`}>{r.label}</td>
                   {dates.map((d) => {
                     const c = days[d] ? r.get(days[d]) : null
                     return (
                       <td key={d} title={c?.title} onClick={() => openDay(d)}
-                        className={`text-center px-0.5 py-1.5 cursor-pointer hover:bg-neutral-100 border-l border-neutral-100 ${d === t ? 'bg-red-50' : ''} ${c?.c || ''}`}>
+                        className={`text-center px-0.5 py-2 cursor-pointer hover:bg-neutral-100 border-l border-neutral-100 ${d === t ? 'bg-red-50' : ''} ${c?.c || ''}`}>
                         {c?.t ?? ''}
                       </td>
                     )
@@ -123,7 +132,7 @@ export default function MonthGrid({ data, openDay }) {
           ))}
         </table>
       </div>
-      <p className="text-xs text-neutral-500 px-1">Tap any day to open and edit it. Hover ✗ / • to see what was eaten or which supplements.</p>
+      <p className="text-xs text-neutral-500 px-1">Swipe sideways to see the whole month. Tap a day to open it.</p>
     </div>
   )
 }
