@@ -142,6 +142,11 @@ export default {
       return env.ASSETS.fetch(new Request(new URL('/money-market/index.html', url).href))
     }
 
+    // Fitness tracker shell
+    if (path === '/fitness' || path.startsWith('/fitness/')) {
+      return env.ASSETS.fetch(new Request(new URL('/fitness/index.html', url).href))
+    }
+
     // Everything else → landing page
     return env.ASSETS.fetch(new Request(new URL('/index.html', url).href))
   },

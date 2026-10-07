@@ -80,6 +80,22 @@ execSync('npm run build', {
 copyDir(path.resolve('money-market/dist'), path.resolve('dist/money-market'))
 console.log('✓ money-market/dist → dist/money-market')
 
+// ── 4c. Build fitness tracker app ─────────────────────────────────────────────
+console.log('
+Installing fitness dependencies…')
+execSync('npm install', {
+  cwd: path.resolve('fitness'),
+  stdio: 'inherit',
+})
+console.log('
+Building fitness app…')
+execSync('npm run build', {
+  cwd: path.resolve('fitness'),
+  stdio: 'inherit',
+})
+copyDir(path.resolve('fitness/dist'), path.resolve('dist/fitness'))
+console.log('✓ fitness/dist → dist/fitness')
+
 // ── 5. Copy _worker.js into dist/ for Cloudflare Pages advanced mode ─────────
 // Pages looks for _worker.js inside the output directory, not the repo root.
 // It automatically provides env.ASSETS to the worker (no wrangler.toml binding needed).

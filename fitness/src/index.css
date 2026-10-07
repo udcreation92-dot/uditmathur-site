@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-neutral-100 text-ink antialiased font-sans;
+  }
+  input[type='number']::-webkit-inner-spin-button { opacity: 0.4; }
+}
+
+@layer components {
+  .card {
+    @apply bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden;
+  }
+  .card-h {
+    @apply flex items-center gap-3 bg-ink text-white px-3 py-2;
+  }
+  .card-h .ico {
+    @apply grid place-items-center w-8 h-8 rounded-lg bg-brand text-lg leading-none;
+  }
+  .card-h h2 {
+    @apply font-head font-semibold uppercase tracking-wide text-lg;
+  }
+  .inp {
+    @apply w-full rounded-lg bg-white border border-neutral-300 px-3 py-2 text-sm
+           focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand;
+  }
+  .lbl {
+    @apply block text-[0.7rem] font-semibold uppercase tracking-wider text-neutral-500 mb-1;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold
+           transition-colors disabled:opacity-50;
+  }
+  .btn-primary { @apply btn bg-brand text-white hover:bg-brand-dark; }
+  .btn-dark    { @apply btn bg-ink text-white hover:bg-neutral-800; }
+  .btn-ghost   { @apply btn bg-white border border-neutral-300 hover:bg-neutral-50; }
+  .tab {
+    @apply px-3 py-2 text-sm font-semibold whitespace-nowrap border-b-2 border-transparent text-neutral-500;
+  }
+  .tab-on { @apply border-brand text-ink; }
+}
+
+.pb-safe { padding-bottom: max(1.5rem, env(safe-area-inset-bottom)); }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
