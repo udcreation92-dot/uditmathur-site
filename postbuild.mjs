@@ -81,14 +81,12 @@ copyDir(path.resolve('money-market/dist'), path.resolve('dist/money-market'))
 console.log('✓ money-market/dist → dist/money-market')
 
 // ── 4c. Build fitness tracker app ─────────────────────────────────────────────
-console.log('
-Installing fitness dependencies…')
+console.log('\nInstalling fitness dependencies…')
 execSync('npm install', {
   cwd: path.resolve('fitness'),
   stdio: 'inherit',
 })
-console.log('
-Building fitness app…')
+console.log('\nBuilding fitness app…')
 execSync('npm run build', {
   cwd: path.resolve('fitness'),
   stdio: 'inherit',
