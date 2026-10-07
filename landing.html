@@ -84,6 +84,17 @@
     .app-card.news     { border-top: 3px solid #2dd4bf; }
     .app-card.fitness  { border-top: 3px solid #e11d27; }
 
+    .app-card { position: relative; }
+    .app-card.locked::after {
+      content: '🔒';
+      position: absolute;
+      top: 0.6rem;
+      right: 0.7rem;
+      font-size: 0.8rem; opacity: 0.6;
+      color: #64748b;
+      letter-spacing: 0.02em;
+    }
+
     .app-icon { font-size: 2.25rem; line-height: 1; }
 
     .app-name {
@@ -99,6 +110,8 @@
       line-height: 1.5;
     }
 
+    footer a { color: #475569; text-decoration: none; margin-left: 0.75rem; }
+
     footer {
       margin-top: 3.5rem;
       font-size: 0.7rem;
@@ -112,32 +125,32 @@
   <h1>Udit Mathur</h1>
 
   <div class="apps" style="grid-template-columns:1fr 1fr">
-    <a href="/task/" class="app-card tasks">
+    <a href="/task/" class="app-card tasks locked">
       <span class="app-icon">✅</span>
       <span class="app-name">Tasks</span>
       <span class="app-desc">Manage your tasks &amp; to-dos</span>
     </a>
-    <a href="/accounts/" class="app-card accounts">
+    <a href="/accounts/" class="app-card accounts locked">
       <span class="app-icon">📒</span>
       <span class="app-name">Accounts</span>
       <span class="app-desc">Bookkeeping &amp; ledgers</span>
     </a>
-    <a href="/cameras/" class="app-card cameras">
+    <a href="/cameras/" class="app-card cameras locked">
       <span class="app-icon">📷</span>
       <span class="app-name">Cameras</span>
       <span class="app-desc">Recorded camera footage</span>
     </a>
-    <a href="http://100.86.73.74:4173/task/trading.html" class="app-card trading">
+    <a href="/go/trading" class="app-card trading locked">
       <span class="app-icon">📈</span>
       <span class="app-name">Trading</span>
       <span class="app-desc">Live analysis &amp; order placement</span>
     </a>
-    <a href="/money-market/" class="app-card money">
+    <a href="/money-market/" class="app-card money locked">
       <span class="app-icon">📊</span>
       <span class="app-name">Money Market</span>
       <span class="app-desc">RBI overnight rates &amp; corridor</span>
     </a>
-    <a href="http://100.86.73.74:4173/task/news.html" class="app-card news">
+    <a href="/go/news" class="app-card news locked">
       <span class="app-icon">📰</span>
       <span class="app-name">News Coverage</span>
       <span class="app-desc">Market news, read later &amp; live TV</span>
@@ -149,6 +162,6 @@
     </a>
   </div>
 
-  <footer>uditmathur.uk</footer>
+  <footer>uditmathur.uk<a href="/logout">Sign out</a></footer>
 </body>
 </html>
