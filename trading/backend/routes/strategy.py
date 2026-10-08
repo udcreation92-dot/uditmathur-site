@@ -59,8 +59,8 @@ class RoiScanRequest(BaseModel):
 
 @router.post("/roi-scan")
 def roi_scan(req: RoiScanRequest):
-    if req.target_roi_pct <= 0:
-        raise HTTPException(400, "target_roi_pct must be positive")
+    if req.target_roi_pct < 0:
+        raise HTTPException(400, "target_roi_pct cannot be negative")
     results = roi_scanner.scan(
         target_roi_pct=req.target_roi_pct,
         underlyings=req.underlyings,

@@ -44,5 +44,9 @@ export function useZerodhaMargins(legsFor) {
 
   const reset = useCallback(() => setMargins({}), []);
 
-  return { margins, bulkLoading, checkOne, checkAll, reset };
+  // Replace the whole margins map at once — used after a cache-based full scan, which has already
+  // fetched each surviving row's real margin and just needs to seed them by the new row index.
+  const seed = useCallback((mapByIndex) => setMargins(mapByIndex || {}), []);
+
+  return { margins, bulkLoading, checkOne, checkAll, reset, seed };
 }

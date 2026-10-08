@@ -3,13 +3,14 @@ import { api } from "../api";
 import { isExpiryDay, saveSpanState, loadSpanState } from "../spanUtils";
 import ZerodhaMarginButton from "./ZerodhaMarginButton";
 import { useZerodhaMargins } from "../useZerodhaMargins";
-import { roiFromMargin } from "../zerodhaMargin";
+import { roiFromMargin, comboZerodhaMargin } from "../zerodhaMargin";
+import { compositeScores } from "../roiScore";
+import { loadMarginCache, saveMarginCache, cacheKeyFor, cacheCoverage } from "../roiMarginCache";
 
 export default function RoiScanner({ symbol, onUseCombo }) {
   const persistKey = `roiScannerState_${symbol.symbol}`;
   const persisted = loadSpanState(persistKey) || {};
 
-  const [targetRoi, setTargetRoi] = useState(60);
   const [strikeCount, setStrikeCount] = useState(20);
   const [safeCe, setSafeCe] = useState("");   // optional: only CE strikes >= this (nearest strike)
   const [safePe, setSafePe] = useState("");   // optional: only PE strikes <= this (nearest strike)
@@ -20,13 +21,42 @@ export default function RoiScanner({ symbol, onUseCombo }) {
   const [results, setResults] = useState(persisted.results ?? null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [ignoreCache, setIgnoreCache] = useState(false);   // force the full slow pass even if cached
+  const [progress, setProgress] = useState(null);          // { done, total } during the margin pass
+  const [scanNote, setScanNote] = useState(null);          // e.g. "full pass" vs "cached" hint
 
   // Zerodha per-combo margins (on demand). A short strangle = both legs SELL at lot size.
   const legsFor = useCallback((r) => [
     { symbol: r.ce_symbol, side: "SELL", quantity: r.lot_size },
     { symbol: r.pe_symbol, side: "SELL", quantity: r.lot_size },
   ], []);
-  const { margins: zMargins, bulkLoading: zBulk, checkOne: zCheckOne, checkAll: zCheckAll, reset: zReset } = useZerodhaMargins(legsFor);
+  const { margins: zMargins, bulkLoading: zBulk, checkOne: zCheckOne, checkAll: zCheckAll, reset: zReset, seed: zSeed } = useZerodhaMargins(legsFor);
+
+  // Fetch real Zerodha basket margin for a list of combos with bounded concurrency, writing each
+  // into the day-cache and reporting progress. Returns a { cacheKey -> {net,gross} } map. Rows that
+  // error are simply skipped (they fall back to the ELM estimate for scoring).
+  const CONCURRENCY = 6;   // Kite's margin API tolerates this; keeps the pass fast without 429s
+  const bulkFetchMargins = useCallback(async (rows, cache, onProgress) => {
+    const out = {};
+    let done = 0, next = 0;
+    onProgress({ done: 0, total: rows.length });
+    const worker = async () => {
+      while (true) {
+        const i = next++;
+        if (i >= rows.length) break;
+        const c = rows[i];
+        const k = cacheKeyFor(c);
+        try {
+          const res = await comboZerodhaMargin(legsFor(c));
+          const val = { net: res.net, gross: res.gross };
+          out[k] = val; cache[k] = val;
+        } catch { /* skip — scoring falls back to ELM for this combo */ }
+        onProgress({ done: ++done, total: rows.length });
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, rows.length) }, worker));
+    return out;
+  }, [legsFor]);
 
   useEffect(() => {
     saveSpanState(persistKey, { results });
@@ -43,28 +73,68 @@ export default function RoiScanner({ symbol, onUseCombo }) {
   }, [symbol.symbol]);
 
   async function scan() {
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setProgress(null); setScanNote(null); zReset();
     try {
       const scanAll = expiryIndex === "all";
-      const data = await api.roiScan({
-        target_roi_pct: +targetRoi,
+      // Pull EVERY candidate (limit:0) so the final top-40 is chosen on real margins — not an ELM pre-cut.
+      const all = await api.roiScan({
+        target_roi_pct: 0,                       // no ROI floor
         underlyings: [symbol.symbol],
-        // "all" sweeps every listed expiry; otherwise scan ONLY the selected one.
-        scan_all: scanAll,
+        scan_all: scanAll,                       // "all" sweeps every listed expiry
         expiry_index: scanAll ? null : +expiryIndex,
         strike_count: +strikeCount,
-        safe_ce: safeCe === "" ? null : +safeCe,   // only CE strikes >= this (nearest strike)
-        safe_pe: safePe === "" ? null : +safePe,   // only PE strikes <= this (nearest strike)
+        safe_ce: safeCe === "" ? null : +safeCe,
+        safe_pe: safePe === "" ? null : +safePe,
+        limit: 0,                                // return the full candidate set, uncapped
       });
-      setResults(data);
-      zReset(); // stale margins/ROI shouldn't carry to a fresh result set
-      // Auto-pull each combo's REAL Zerodha basket margin so ROI + Score are margin-based with no
-      // manual click. The result set is capped (backend `limit`) to keep this fan-out bounded.
-      if (data?.length) zCheckAll(data);
+      if (!all?.length) { setResults([]); return; }
+
+      const cache = ignoreCache ? {} : loadMarginCache(symbol.symbol);
+      const doFull = ignoreCache || cacheCoverage(cache, all) < 0.5;
+
+      // A cold full pass over ALL expiries can be thousands of margin calls (minutes) — confirm first.
+      if (doFull && all.length > 800 &&
+          !window.confirm(`Full margin pass over ${all.length} combinations — this can take a few minutes. Run it now?`)) {
+        return;
+      }
+
+      let marginByKey;
+      if (doFull) {
+        setScanNote(`Full pass — pricing all ${all.length} combos' real margin (cached for the rest of the day).`);
+        marginByKey = await bulkFetchMargins(all, cache, setProgress);
+      } else {
+        // Warm cache: rank everything on cached margins, then re-price only the strongest short-list fresh.
+        const cachedRoi = all.map(c => {
+          const m = cache[cacheKeyFor(c)]?.net;
+          return m != null ? roiFromMargin(c.premium_money, m, c.days_to_expiry) : c.roi_pct;
+        });
+        const prelim = compositeScores(all, cachedRoi);
+        const shortList = all.map((_, i) => i).sort((a, b) => prelim[b] - prelim[a]).slice(0, 80).map(i => all[i]);
+        setScanNote(`Cached margins (${new Date().toLocaleDateString()}) → re-pricing the top ${shortList.length} fresh.`);
+        marginByKey = await bulkFetchMargins(shortList, cache, setProgress);
+        // Keep cached margins for the rest so their scores stay margin-based (they won't reach top-40).
+        for (const c of all) { const k = cacheKeyFor(c); if (!(k in marginByKey) && cache[k]) marginByKey[k] = cache[k]; }
+      }
+      saveMarginCache(symbol.symbol, cache);
+
+      // Final ranking over every candidate on the margins we now have (ELM fallback where a call failed).
+      const finalRoi = all.map(c => {
+        const m = marginByKey[cacheKeyFor(c)]?.net;
+        return m != null ? roiFromMargin(c.premium_money, m, c.days_to_expiry) : c.roi_pct;
+      });
+      const finalScores = compositeScores(all, finalRoi);
+      const top = all.map((_, i) => i).sort((a, b) => finalScores[b] - finalScores[a]).slice(0, 40).map(i => all[i]);
+
+      setResults(top);
+      // Seed the shown rows' real margins by their NEW index so the table renders real ROI/Score at once.
+      const seeded = {};
+      top.forEach((c, i) => { const m = marginByKey[cacheKeyFor(c)]; if (m) seeded[i] = m; });
+      zSeed(seeded);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
+      setProgress(null);
     }
   }
 
@@ -92,24 +162,7 @@ export default function RoiScanner({ symbol, onUseCombo }) {
   // Score recomputed CLIENT-SIDE from the EFFECTIVE ROI, so Score always tracks the SAME margin as
   // the ROI column: ELM-only at scan time, then real Zerodha margin for each row as you check it.
   // Mirrors the backend _add_scores — winsorize each metric to its 5th–95th pct, min-max, 40/30/30.
-  const scores = useMemo(() => {
-    if (!results) return [];
-    const pct = (s, p) => {
-      if (!s.length) return 0;
-      if (s.length === 1) return s[0];
-      const idx = p * (s.length - 1), lo = Math.floor(idx), hi = Math.min(lo + 1, s.length - 1);
-      return s[lo] + (s[hi] - s[lo]) * (idx - lo);
-    };
-    const norm = (vals) => {
-      const s = vals.filter(v => v != null).sort((a, b) => a - b);
-      const lo = pct(s, 0.05), hi = pct(s, 0.95), span = hi - lo;
-      return (v) => (v == null || span <= 0) ? 0 : Math.max(0, Math.min(1, (v - lo) / span));
-    };
-    // Distance term uses σ-distance (time-adjusted) so cross-expiry safety is comparable.
-    const nRoi = norm(effRoi), nTheta = norm(results.map(r => r.theta_pct)), nDist = norm(results.map(r => r.dist_sigma));
-    return results.map((r, i) =>
-      Math.round(1000 * (0.20 * nRoi(effRoi[i]) + 0.40 * nTheta(r.theta_pct) + 0.40 * nDist(r.dist_sigma))) / 10);
-  }, [results, effRoi]);
+  const scores = useMemo(() => results ? compositeScores(results, effRoi) : [], [results, effRoi]);
 
   // Display order: indices into `results` sorted by the chosen column. We sort indices (not the
   // array) so each row keeps its ORIGINAL index for the per-row Zerodha margin cache (keyed by i).
@@ -139,21 +192,17 @@ export default function RoiScanner({ symbol, onUseCombo }) {
           = distance ÷ IV·√time, so the same % counts as safer with fewer days left) — so a reckless
           near-ATM combo with huge ROI ranks below a safer, high-decay one. Click any column header to re-sort. ROI%, the{" "}
           <span className="text-indigo-300">Margin</span> column and the Score all use each combo's <span className="text-indigo-300">real Zerodha
-          basket margin</span> (with the hedge benefit between the two legs) — pulled automatically on each scan, so there's nothing to
-          click. The <span className="text-gray-400">Target ROI %</span> is a quick ELM-based pre-filter that trims the candidate set
-          before those margins are fetched (it's a generous upper bound, so nothing that could clear your target on real margin is
-          dropped). Only strikes within the selected range (on each side of spot) are checked — if the
-          lowest result shown is well above your target, try a wider strike range to reach further OTM/lower-premium combos.
+          basket margin</span> (with the hedge benefit between the two legs). The <span className="text-gray-400">first scan of a script each day</span>{" "}
+          prices <span className="text-gray-400">every</span> combination's real margin (slow — a progress bar shows it) and caches them; later
+          scans that day reuse the cache to shortlist, then re-price only the strongest fresh, so they return in seconds. Tick{" "}
+          <span className="text-gray-400">Full rescan</span> to force the slow pass again. <span className="text-gray-400">All expiries</span> prices
+          thousands of combos (minutes) — it asks before running. Only strikes within the selected range (each side of spot) are
+          checked and the top 40 by score are shown — widen the strike range to reach further OTM / lower-premium combos.
           Optionally bound the combos with <span className="text-gray-400">Safe CE</span> (only CE strikes at/above it) and/or{" "}
           <span className="text-gray-400">Safe PE</span> (only PE strikes at/below it) — the figure snaps to the nearest available strike.
         </p>
 
         <div className="flex flex-wrap gap-4 items-end">
-          <label className="flex flex-col gap-1 text-xs text-gray-400">
-            Target ROI % (p.a. · coarse pre-filter)
-            <input type="number" min={1} value={targetRoi} onChange={e => setTargetRoi(e.target.value)}
-              className="input-field w-28" />
-          </label>
           <label className="flex flex-col gap-1 text-xs text-gray-400">
             Expiry
             <select value={expiryIndex} onChange={e => setExpiryIndex(e.target.value === "all" ? "all" : +e.target.value)} className="input-field w-56">
@@ -179,11 +228,26 @@ export default function RoiScanner({ symbol, onUseCombo }) {
             <input type="number" value={safePe} onChange={e => setSafePe(e.target.value)} placeholder="all PE"
               className="input-field w-28" />
           </label>
+          <label className="flex items-center gap-2 text-xs text-gray-400 select-none" title="Ignore today's cached margins and re-price every combination from scratch (slow).">
+            <input type="checkbox" checked={ignoreCache} onChange={e => setIgnoreCache(e.target.checked)} className="accent-blue-600" />
+            Full rescan (ignore cache)
+          </label>
           <button onClick={scan} disabled={loading}
             className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded text-sm font-medium">
-            {loading ? "Scanning…" : "Scan"}
+            {loading ? (progress ? `Pricing ${progress.done}/${progress.total}…` : "Scanning…") : "Scan"}
           </button>
         </div>
+
+        {progress && (
+          <div className="mt-3">
+            <div className="h-1.5 bg-gray-800 rounded overflow-hidden">
+              <div className="h-full bg-blue-500 transition-all"
+                style={{ width: `${progress.total ? Math.round(progress.done / progress.total * 100) : 0}%` }} />
+            </div>
+            <p className="text-[11px] text-gray-500 mt-1">{scanNote} &nbsp;{progress.done}/{progress.total} combos priced.</p>
+          </div>
+        )}
+        {!progress && scanNote && !loading && <p className="text-[11px] text-gray-600 mt-2">{scanNote}</p>}
 
         {error && <p className="text-red-400 text-sm bg-red-900/20 border border-red-800 rounded p-2 mt-3">{error}</p>}
       </div>
@@ -191,7 +255,7 @@ export default function RoiScanner({ symbol, onUseCombo }) {
       {results && (
         results.length === 0 ? (
           <p className="text-gray-500 text-sm">
-            No combinations found clearing the {targetRoi}% pre-filter on this expiry. Try a lower target or a wider strike range.
+            No combinations found on this expiry. Try a wider strike range.
           </p>
         ) : (
           <div className="bg-gray-900 rounded-lg border border-gray-800 overflow-x-auto">
