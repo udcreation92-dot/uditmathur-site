@@ -1,0 +1,138 @@
+[
+  {
+    "name": "Zerodha Bulletin",
+    "url": "https://zerodha.com/marketintel/bulletin/?format=xml"
+  },
+  {
+    "name": "Bloomberg Economics",
+    "url": "https://feeds.bloomberg.com/economics/news.rss"
+  },
+  {
+    "name": "Banking/Finance-Industry-Economic Times",
+    "url": "http://economictimes.indiatimes.com/industry/banking/finance/rssfeeds/13358259.cms"
+  },
+  {
+    "name": "BBC News",
+    "url": "http://feeds.bbci.co.uk/news/world/rss.xml"
+  },
+  {
+    "name": "Bloomberg Markets",
+    "url": "https://feeds.bloomberg.com/markets/news.rss"
+  },
+  {
+    "name": "BBC News World",
+    "url": "http://newsrss.bbc.co.uk/rss/newsonline_world_edition/business/rss.xml"
+  },
+  {
+    "name": "Bloomberg Originals",
+    "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCUMZ7gohGI9HcU9VNsr2FJQ"
+  },
+  {
+    "name": "CAclubindia.com : Articles",
+    "url": "http://feeds.feedburner.com/CaclubindiacomArticles"
+  },
+  {
+    "name": "CAclubindia.com : Experts",
+    "url": "http://feeds2.feedburner.com/CaclubindiacomExperts"
+  },
+  {
+    "name": "Econbrowser",
+    "url": "http://www.econbrowser.com/atom.xml"
+  },
+  {
+    "name": "Economic Indicators News",
+    "url": "http://www.investing.com/rss/news_95.rss"
+  },
+  {
+    "name": "Economy News",
+    "url": "http://www.investing.com/rss/news_14.rss"
+  },
+  {
+    "name": "Economy news The Hindu",
+    "url": "http://www.thehindu.com/business/Economy/?service=rss"
+  },
+  {
+    "name": "Editorials The Hindu",
+    "url": "http://www.thehindu.com/opinion/editorial/?service=rss"
+  },
+  {
+    "name": "EIA",
+    "url": "http://www.eia.gov/rss/todayinenergy.xml"
+  },
+  {
+    "name": "Free Press Journal",
+    "url": "https://www.freepressjournal.in/stories.rss"
+  },
+  {
+    "name": "Gadgets 360",
+    "url": "https://feeds.feedburner.com/ndtvgadgets-latest"
+  },
+  {
+    "name": "Harvard Business Review",
+    "url": "http://feeds.harvardbusiness.org/harvardbusiness/"
+  },
+  {
+    "name": "Health News The Hindu",
+    "url": "http://www.thehindu.com/sci-tech/health/?service=rss"
+  },
+  {
+    "name": "National The Hindu",
+    "url": "http://www.thehindu.com/news/national/?service=rss"
+  },
+  {
+    "name": "TOI",
+    "url": "http://timesofindia.indiatimes.com/rssfeeds/-2128936835.cms"
+  },
+  {
+    "name": "mint - companies",
+    "url": "http://www.livemint.com/rss/companies"
+  },
+  {
+    "name": "mint - industry",
+    "url": "http://www.livemint.com/rss/industry"
+  },
+  {
+    "name": "mint - markets",
+    "url": "https://www.livemint.com/rss/markets"
+  },
+  {
+    "name": "mint - money",
+    "url": "http://www.livemint.com/rss/money"
+  },
+  {
+    "name": "mint - news",
+    "url": "https://www.livemint.com/rss/news"
+  },
+  {
+    "name": "mint - opinion",
+    "url": "http://www.livemint.com/rss/opinion"
+  },
+  {
+    "name": "mint - politics",
+    "url": "https://www.livemint.com/rss/politics"
+  },
+  {
+    "name": "Nai Dunia",
+    "url": "http://rss.jagran.com/naidunia/madhya-pradesh/indore.xml"
+  },
+  {
+    "name": "PRESS RELEASES FROM RBI",
+    "url": "https://www.rbi.org.in/pressreleases_rss.xml"
+  },
+  {
+    "name": "Pulse by Zerodha",
+    "url": "http://pulse.zerodha.com/feed.php?n=20"
+  },
+  {
+    "name": "SPEECHES FROM RBI",
+    "url": "https://www.rbi.org.in/speeches_rss.xml"
+  },
+  {
+    "name": "The Japan Times: All Stories",
+    "url": "http://feeds.feedburner.com/japantimes"
+  },
+  {
+    "name": "\u0907\u0902\u0926\u094c\u0930 | \u0926\u0948\u0928\u093f\u0915 \u092d\u093e\u0938\u094d\u0915\u0930",
+    "url": "https://www.bhaskar.com/rss-feed/1701/"
+  }
+]

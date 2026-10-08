@@ -1,0 +1,12 @@
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+fyers-apiv3
+kiteconnect
+python-dotenv==1.0.1
+pandas>=2.2.3
+numpy>=1.26.4
+ta==0.11.0
+python-multipart==0.0.9
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+NorenRestApiOAuth>=0.0.39

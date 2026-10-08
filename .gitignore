@@ -33,3 +33,7 @@ dist-local/
 
 # Root lockfile removed: Windows-generated locks fail `npm ci` on Linux CI; let CI npm install resolve fresh
 package-lock.json
+
+# Runtime logs & boot output
+*.log
+.backend_boot.out

@@ -1,0 +1,39 @@
+{
+  "name": "roi_option_selling",
+  "title": "ROI-target Nifty option selling",
+  "status": "active",
+  "summary": "Deploy free margin into a short Nifty strangle (sell CE + sell PE) whose ROI matches a target, sizing lots to a given capital. ROI = premium collected / Zerodha basket margin.",
+  "underlying": "NSE:NIFTY50-INDEX",
+  "structure": "short_strangle_symmetric",
+  "margin_reference_broker": "zerodha",
+  "default_execution_broker": "shoonya",
+  "default_roi_basis": "annualized",
+  "params": {
+    "capital": "₹ amount of margin to deploy (e.g. 600000)",
+    "target_roi_pct": "target ROI in percent (e.g. 20)",
+    "expiry_index": "which expiry (0 = nearest; get the list from GET /roi/expiries)",
+    "roi_basis": "'annualized' for weekly/monthly, 'absolute' for same-day / expiry-day trades"
+  },
+  "how_to_run": [
+    "Confirm the expiry the user means, mapping it to expiry_index via GET /roi/expiries.",
+    "Call POST /roi/solve {capital, target_roi_pct, expiry_index, roi_basis}. The math is deterministic server-side — never compute strikes/margin/ROI yourself.",
+    "Present the 'best' rung AND a few ladder rungs so the user can judge by BOTH ROI and distance-from-ATM (their own words: 'at 20% and how far from ATM').",
+    "When the user picks a rung: call preview_order(ce_symbol, pe_symbol, lots, ce_limit=that rung's ce_bid, pe_limit=pe_bid, broker) and SHOW them the preview — the exact legs, qty, ACTUAL limits (fill_mode defaults to 'protective' = a tick or two below the bid so it fills reliably; pass fill_mode='exact' to sell at the bid), est margin/premium and the guardrail verdict. Point out the limit vs bid. NEVER place without previewing first.",
+    "Check get_trading_mode: if 'dry_run', tell the user the order will be SIMULATED (nothing sent to a broker) until they explicitly say go live; if 'killed', tell them the kill switch is on.",
+    "ONLY after the user explicitly approves THIS order, call place_order with the same params and confirm=true. Never set confirm=true on your own initiative.",
+    "Flag event risk (results/RBI/expiry) from the news+events modules, and thin liquidity (low OI / tiny bid) before the user confirms.",
+    "Mode control: set_trading_mode('live') only when the user says go live; set_trading_mode('killed') is the kill switch; set_trading_mode('dry_run') to go back to simulation."
+  ],
+  "roll_rule": {
+    "trigger": "an existing open short leg whose strike is now within 5% of spot (the market moved toward it)",
+    "action": "propose CLOSING those threatened legs; the margin FREED by closing them (released SPAN minus buy-back cost) becomes the capital for a fresh strangle placed at the target ROI, further OTM.",
+    "note": "This is a roll: de-risk the near-money leg and redeploy the freed margin. Still confirm-gated. Compute freed margin from the positions view; feed it as `capital` to /roi/solve."
+  },
+  "costs": "roi_solve reports ROI NET of brokerage (₹6 flat per option order → ₹12 to enter a strangle: sell CE + sell PE). net_roi_* is the target/after-brokerage figure; roi_* is gross. Only brokerage is modelled — STT/exchange/GST/stamp and any exit brokerage are not.",
+  "guardrails": [
+    "Propose-and-confirm: nothing is placed without the user's explicit approval.",
+    "ROI is measured on Zerodha basket margin as a consistent yardstick; if executing on another broker (default Shoonya), re-check that broker's own margin and available funds before placing.",
+    "The per-run `capital` figure is the deployment cap.",
+    "For same-day/expiry-day, use roi_basis='absolute' — annualized ROI is meaningless at 1 DTE."
+  ]
+}
