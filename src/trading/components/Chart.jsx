@@ -1,21 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import { init, dispose } from "klinecharts";
 import { api } from "../api";
+import { strategyBreakevens } from "../payoff";
 
-// Phase 1 of the trading chart (see docs/chart-klinecharts-plan.md): raw klinecharts candles for the
-// selected symbol, with a timeframe selector. Phase 2 adds draggable SL/target overlays wired to the
-// scalp engine — built on the same instance, which is why we use raw klinecharts (not KLineChart Pro,
-// which hides its chart instance).
+// Trading chart (see docs/chart-klinecharts-plan.md). Phase 1: candles + timeframes. Phase 1b (this
+// file): realtime candle rolling from the Fyers WS tick cache (/stream), a live spot line, and
+// breakeven overlays for open strategies on the charted underlying. Built on raw klinecharts so
+// Phase 2's draggable SL/target order lines can attach to the same instance.
 
 const PERIODS = [
-  { id: "1", label: "1m", days: 3 },
-  { id: "5", label: "5m", days: 7 },
-  { id: "15", label: "15m", days: 20 },
-  { id: "60", label: "1h", days: 60 },
-  { id: "D", label: "1D", days: 360 },   // Fyers caps a single daily request at ~366 days
+  { id: "1", label: "1m", days: 3, ms: 60_000 },
+  { id: "5", label: "5m", days: 7, ms: 300_000 },
+  { id: "15", label: "15m", days: 20, ms: 900_000 },
+  { id: "60", label: "1h", days: 60, ms: 3_600_000 },
+  { id: "D", label: "1D", days: 360, ms: 86_400_000 },   // Fyers caps a single daily request at ~366 days
 ];
 
-// klinecharts' default theme is light; these overrides make it readable on the dark dashboard.
 const DARK_STYLES = {
   grid: { horizontal: { color: "#1f2937" }, vertical: { color: "#1f2937" } },
   candle: {
@@ -33,29 +33,33 @@ const DARK_STYLES = {
   indicator: { tooltip: { text: { color: "#9ca3af" } } },
 };
 
-function ymd(d) {
-  return d.toISOString().slice(0, 10);
-}
+const ymd = (d) => d.toISOString().slice(0, 10);
 
 export default function Chart({ symbol }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
+  const periodRef = useRef("15");
+  const spotLineRef = useRef(null);   // overlay id of the live spot line
+  const beIdsRef = useRef([]);        // overlay ids of breakeven lines
   const [period, setPeriod] = useState("15");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [beCount, setBeCount] = useState(0);
 
-  // Create the chart once; dispose on unmount. A ResizeObserver keeps it sized to the container.
+  useEffect(() => { periodRef.current = period; }, [period]);
+
+  // Create the chart once; dispose on unmount. ResizeObserver keeps it sized to the container.
   useEffect(() => {
     const el = containerRef.current;
     const chart = init(el, { styles: DARK_STYLES });
-    chart.createIndicator("VOL", false);   // volume in its own sub-pane
+    chart.createIndicator("VOL", false);
     chartRef.current = chart;
     const ro = new ResizeObserver(() => chart.resize());
     ro.observe(el);
     return () => { ro.disconnect(); dispose(el); chartRef.current = null; };
   }, []);
 
-  // (Re)load candles whenever the symbol or timeframe changes.
+  // (Re)load historical candles whenever the symbol or timeframe changes.
   useEffect(() => {
     if (!symbol?.symbol || !chartRef.current) return;
     let cancelled = false;
@@ -77,6 +81,87 @@ export default function Chart({ symbol }) {
     return () => { cancelled = true; };
   }, [symbol?.symbol, period]);
 
+  // Realtime: subscribe the symbol to the live feed and poll the tick cache, rolling the forming
+  // candle and keeping a live spot line. (No live ticks outside market hours — the line/candle just
+  // hold the last value until the market opens.)
+  useEffect(() => {
+    if (!symbol?.symbol || !chartRef.current) return;
+    let stopped = false;
+    api.streamSubscribe([symbol.symbol]).catch(() => {});
+
+    const tick = async () => {
+      if (stopped) return;
+      try {
+        const resp = await api.streamQuotes([symbol.symbol]);
+        const q = resp?.quotes?.[symbol.symbol];
+        const ltp = q?.ltp;
+        const chart = chartRef.current;
+        if (ltp == null || !chart) return;
+
+        // Live spot line (create once, then move it).
+        const spotStyles = { styles: { line: { color: "#3b82f6", style: "dashed", size: 1 }, text: { color: "#3b82f6" } } };
+        if (spotLineRef.current == null) {
+          spotLineRef.current = chart.createOverlay({ name: "priceLine", lock: true, points: [{ value: ltp }], ...spotStyles });
+        } else {
+          chart.overrideOverlay({ id: spotLineRef.current, points: [{ value: ltp }] });
+        }
+
+        // Roll the forming candle on the series' own cadence (robust to IST/UTC boundary offsets).
+        const list = chart.getDataList();
+        if (!list.length) return;
+        const last = list[list.length - 1];
+        const periodMs = (PERIODS.find(p => p.id === periodRef.current) || PERIODS[2]).ms;
+        const now = Date.now();
+        let bar;
+        if (now >= last.timestamp + periodMs) {
+          bar = { timestamp: last.timestamp + periodMs, open: ltp, high: ltp, low: ltp, close: ltp, volume: 0 };
+        } else {
+          bar = { ...last, high: Math.max(last.high, ltp), low: Math.min(last.low, ltp), close: ltp };
+        }
+        chart.updateData(bar);
+      } catch { /* transient — next tick retries */ }
+    };
+
+    const interval = setInterval(tick, 1500);
+    tick();
+    return () => {
+      stopped = true;
+      clearInterval(interval);
+      const chart = chartRef.current;
+      if (chart && spotLineRef.current != null) { chart.removeOverlay(spotLineRef.current); spotLineRef.current = null; }
+    };
+  }, [symbol?.symbol]);
+
+  // Breakeven overlays: draw a labeled horizontal line for each open strategy on this underlying.
+  useEffect(() => {
+    if (!symbol?.symbol || !chartRef.current) return;
+    let cancelled = false;
+    // clear previous breakeven lines
+    beIdsRef.current.forEach(id => chartRef.current.removeOverlay(id));
+    beIdsRef.current = [];
+    setBeCount(0);
+
+    api.listStrategies()
+      .then(strats => {
+        if (cancelled || !chartRef.current) return;
+        const mine = (strats || []).filter(s => s.status === "open" && s.underlying_symbol === symbol.symbol);
+        const levels = new Set();
+        for (const s of mine) {
+          for (const be of strategyBreakevens(s.legs, s.spot)) levels.add(be);
+        }
+        [...levels].forEach(be => {
+          const id = chartRef.current.createOverlay({
+            name: "priceLine", lock: true, points: [{ value: be }],
+            styles: { line: { color: "#f59e0b", style: "dashed", size: 1 }, text: { color: "#f59e0b" } },
+          });
+          if (id) beIdsRef.current.push(id);
+        });
+        setBeCount(beIdsRef.current.length);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [symbol?.symbol]);
+
   return (
     <div className="bg-gray-900 rounded-lg border border-gray-800 p-3">
       <div className="flex items-center gap-3 mb-2">
@@ -89,6 +174,8 @@ export default function Chart({ symbol }) {
             </button>
           ))}
         </div>
+        <span className="text-[11px] text-blue-400">— spot</span>
+        {beCount > 0 && <span className="text-[11px] text-amber-400">— {beCount} breakeven{beCount > 1 ? "s" : ""}</span>}
         {loading && <span className="text-xs text-gray-500">loading…</span>}
         {error && <span className="text-xs text-red-400">{error}</span>}
       </div>
