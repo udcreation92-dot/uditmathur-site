@@ -1,0 +1,368 @@
+Failed to authenticate. API Error: 401 OAuth access token has expired. Re-authenticate to continue.
+Failed to authenticate. API Error: 401 OAuth access token has expired. Re-authenticate to continue.
+Failed to authenticate. API Error: 401 OAuth access token has expired. Re-authenticate to continue.
+`/calendar/macro-scan` returns 404 — that endpoint does not exist on this backend. The closest available calendar endpoints are `/calendar/macro`, `/calendar/upcoming`, and `/rss/feed`.
+
+The macro-scan feature hasn't been implemented yet. If you'd like me to build it, or if you meant to call one of the existing endpoints instead, let me know.
+The running server doesn't have the `/calendar/macro-scan` or `/calendar/macro-ingest` routes — both are in the code (`routes/calendar.py` and `macro_scan.py`) but the server loaded before they were added. The hot-reload isn't picking up the changes.
+
+**The backend needs a manual restart** to load these routes. Once restarted, the full workflow will work:
+
+1. `GET /calendar/macro-scan` → returns headlines since the cursor
+2. (Claude inspects and identifies dated macro events)
+3. `POST /calendar/macro-ingest` → writes them as pending suggestions + advances the cursor
+
+Can you restart the backend? Once it's up I'll run the scan immediately.
+Done. 3 events added, cursor advanced to `2026-08-28T19:35:00+00:00`.
+
+**Pending approval (new):**
+- **2026-08-31** — RBI VRRR Auction ₹6,00,000 cr (15-day, reversal Sep 15)
+- **2026-09-11** — Bank Workers Nationwide Strike threat (DA/pension/5-day week)
+- **2026-09-17** — BoE Rate Decision
+Done. No new headlines this scan (count = 0). Cursor advanced to `2026-08-28T19:35:00+00:00`. No new events ingested.
+
+3 events remain pending from prior scans:
+
+| # | Event | Date | Category |
+|---|-------|------|----------|
+| 127 | RBI VRRR Auction (15-day, ₹6,00,000 cr) | 2026-08-31 | RBI |
+| 128 | Bank Workers Nationwide Strike (threatened) | 2026-09-11 | Macro |
+| 129 | BoE Rate Decision | 2026-09-17 | Global |
+No new headlines returned (count: 0). No calendar events to extract. The scan cursor `2026-08-28T19:35:00+00:00` has been noted for the next run.
+No new headlines since the last scan (`count: 0`). Nothing to calendar. Cursor advanced to **2026-08-28T19:35:00+00:00**.
+**0 new headlines** — nothing to scan. `scanned_through: 2026-08-28T19:35:00+00:00`
+
+No events extracted (empty feed).
+Done. 8 headlines scanned, 0 market-moving events extracted — none had a concrete future date. Cursor advanced to `2026-08-28T19:58:21Z`.
+Done. 1 event added, cursor advanced to `2026-08-28T20:51:14Z`.
+
+| Event | Date | Category |
+|---|---|---|
+| US Fed FOMC Rate Decision (September) | 2026-09-16 | Macro |
+
+Signal: Fed Chair Warsh doubled down on hawkish inflation stance at Jackson Hole; Wall Street is pricing a September rate hike — negative for risk assets and INR if it materialises.
+Done. 2 events submitted, 1 new (FOMC Sep 16 was already in the system from a prior scan), 1 duplicate skipped. Cursor advanced to `2026-08-29T03:35:13+05:30`.
+
+**Pending suggestions (await your approval):**
+- **US Fed FOMC Rate Decision (September)** — 2026-09-16 *(existing, id 130)*
+- **US 50% Tariffs on Canadian Autos/Steel Deadline** — 2027-01-01 *(new, id 131)*
+**Scan complete.** 1 headline read, 0 new events detected (opinion interview — no concrete scheduled event). Cursor advanced to `2026-08-28T23:02:46Z`.
+
+**Pending suggestions awaiting your approval:**
+
+| # | Event | Date | Category |
+|---|-------|------|----------|
+| 130 | US Fed FOMC Rate Decision (September) | 2026-09-16 | Macro |
+| 131 | US 50% Tariffs on Canadian Autos/Steel — Deadline | 2027-01-01 | Macro |
+Done. Cursor advanced to `2026-08-29T00:00:00+00:00`. 0 new events added from today's 3 headlines (no concrete future dated events found). The API also returned 2 previously pending suggestions awaiting your approval:
+
+| # | Event | Date | Category |
+|---|-------|------|----------|
+| 130 | US Fed FOMC Rate Decision (September) | 2026-09-16 | Macro |
+| 131 | US 50% Tariffs on Canadian Autos/Steel — Deadline | 2027-01-01 | Macro |
+**Done.** Scan cursor advanced to `2026-08-29T00:56:19Z`. No new events extracted from this batch (0 added, 0 skipped). Two events already pending approval from prior runs:
+
+| # | Event | Date | Category |
+|---|-------|------|----------|
+| 130 | US Fed FOMC Rate Decision (September) | 2026-09-16 | Macro |
+| 131 | US 50% Tariffs on Canadian Autos/Steel — Deadline | 2027-01-01 | Macro |
+Done.
+
+- **Added 1 new event** (suggestion #132): FM Sitharaman G-20/US visit ends **2026-09-02**.
+- 2 events already pending from earlier scans: FOMC Sep 16, US tariff deadline Jan 1 2027.
+- Cursor advanced to `2026-08-29T07:37:32+05:30`.
+**Done.** Cursor advanced to `2026-08-29T08:30:03+05:30`. No new events added from this batch (0 added, 0 skipped). 3 events already pending approval from prior runs:
+
+| # | Event | Date | Category |
+|---|-------|------|----------|
+| 132 | FM Sitharaman US visit ends — G-20 Finance talks | 2026-09-02 | Geopolitical |
+| 130 | US Fed FOMC Rate Decision (September) | 2026-09-16 | Macro |
+| 131 | US 50% Tariffs on Canadian Autos/Steel — Deadline | 2027-01-01 | Macro |
+**Done.** 2 events added, 0 skipped. Cursor advanced to `2026-08-29T09:36:38+05:30`.
+
+**Submitted:**
+- `Geopolitical` — PM Modi Uzbekistan/Kyrgyzstan visit, **Aug 29–Sep 1**
+- `Global` — US FOMC rate decision (25 bps hike signalled by Warsh at Jackson Hole), **Sep 17**
+
+**Note:** A duplicate FOMC entry (`id:130`, dated Sep 16) was already pending from an earlier scan run — the two differ by one day (Sep 16 vs 17); you may want to reject the less precise one via the Calendar tab.
+No new headlines since last scan (`scanned_through: 2026-08-29T09:36:38+05:30`, count: 0). Nothing to extract or post.
+Done. 5 events added (0 skipped). The API also shows 10 total pending suggestions, including events from a prior scan run (FOMC Sep 16, Warsh/Jackson Hole Sep 17, US tariff deadline Jan 2027).
+
+**Summary of what was submitted this run:**
+
+| Date | Event |
+|------|-------|
+| 30 Aug | 26th SCO Summit, Bishkek — PM Modi attending |
+| 2 Sep | FM Sitharaman US/Canada visit ends — G-20 finance talks |
+| 5 Sep | US NFP (August jobs report) |
+| 17 Sep | US Fed FOMC — rate hike signalled by Chair Warsh (Jackson Hole) |
+| 31 Dec | Tata Sons AGM deadline |
+
+Cursor advanced to `2026-08-29T10:27:52+00:00`.
+The POST endpoint returned 404 — the route doesn't exist yet on this backend. 
+
+**Summary:** 1 headline scanned (cursor advanced to `2026-08-29T11:54:48+00:00`). No qualifying scheduled/dated market-moving events were found — the sole article was an SBI savings-rate explainer with no forward event. The POST endpoint `/calendar/macro-events` is not implemented on the backend yet.
+Cursor advanced. 0 new events added from this scan (1 headline — SBI savings rate article — had no qualifying future events). 10 previously pending suggestions already in the queue are shown for reference.
+Scan returned **0 new headlines** — nothing to extract or post. Cursor advanced to `2026-08-29T11:54:48+00:00`.
+Only 1 headline returned; it is a user complaint about the Income Tax portal being down — no scheduled, dated, market-moving event. Zero events to extract.
+
+The prompt for Step 3 was truncated (cut off mid-sentence at "Resolve relative wording (next…"), so I cannot complete that step. No events were identified from this scan batch (`scanned_through: 2026-08-29T14:59:47+00:00`).
+Cursor advanced. 0 new events added this scan (all 10 pending events were already in the queue from prior runs). Current pending suggestions for review:
+
+| Date | Event | Category |
+|------|-------|----------|
+| 29 Aug | PM Modi visit — Uzbekistan & Kyrgyzstan | Geopolitical |
+| 30 Aug | 26th SCO Summit, Bishkek | Geopolitical |
+| 2 Sep | FM Sitharaman US visit — G-20 Finance talks | Policy |
+| 5 Sep | US NFP / August Jobs Report | Macro |
+| 16–17 Sep | US Fed FOMC rate decision (hike signalled by Warsh at Jackson Hole) | Macro |
+| 31 Dec | Tata Sons AGM deadline | Corporate |
+| 1 Jan 2027 | US 50% tariffs on Canadian autos/steel deadline | Macro |
+No new headlines returned (`count: 0`). Nothing to add to the calendar.
+
+`scanned_through: 2026-08-29T14:59:47+00:00`
+Done. No new headlines this scan (count: 0); cursor advanced to `2026-08-29T14:59:47Z`. 10 events remain pending approval in the Calendar tab.
+No new headlines since the last scan. Nothing to extract or post.
+No new headlines since the last scan (count: 0). Nothing to extract or post.
+Done. **3 events added, 0 skipped. Cursor advanced to `2026-08-29T21:36:31+05:30`.**
+
+Events submitted for approval:
+
+| Date | Event | Category |
+|------|-------|----------|
+| 2026-08-31 | 26th SCO Summit, Bishkek — PM Modi attends | Geopolitical |
+| 2026-09-01 | Apple CEO handover: John Ternus takes charge | Global |
+| 2026-10-26 | HDFC Bank CEO transition — Jagdishan term ends | Macro |
+
+Note: The SCO Summit date (Aug 31) is inferred — Modi's two-day Tashkent leg runs Aug 29–30; an earlier scan already logged Aug 30 as the summit date, so there are now two pending entries for the same event at slightly different dates (IDs 135 and 140) — you may want to reject one.
+Cursor advanced. 0 new events added from this batch (all 13 headlines lacked qualifying future-dated macro events). The API shows **13 pending suggestions** from prior scans awaiting your review — here's a summary:
+
+| Date | Event | Category |
+|---|---|---|
+| 2026-08-29–09-01 | PM Modi visit to Uzbekistan & Kyrgyzstan | Geopolitical |
+| 2026-08-30 | 26th SCO Summit, Bishkek | Geopolitical |
+| 2026-08-31 | 26th SCO Summit — PM Modi attends | Geopolitical |
+| 2026-09-01 | Apple CEO handover: Ternus takes charge | Global |
+| 2026-09-02 | FM Sitharaman US/G-20 Finance talks end | Policy |
+| 2026-09-05 | US Non-Farm Payrolls (August) | Macro |
+| 2026-09-16/17 | **US Fed FOMC rate decision** (hike signalled by Warsh at Jackson Hole) | Macro |
+| 2026-10-26 | HDFC Bank CEO transition | Corporate |
+| 2026-12-31 | Tata Sons AGM deadline | Corporate |
+| 2027-01-01 | US 50% Tariffs on Canadian Autos/Steel deadline | Macro |
+**Scan complete.** 0 new events added from today's single headline (chilli crop disease — no macro relevance). Cursor advanced to `2026-08-29T17:30:00 UTC`.
+
+There are **13 pending suggestions** from prior scans awaiting approval, including:
+
+| Date | Event |
+|------|-------|
+| Aug 29–Sep 1 | PM Modi visits Uzbekistan & Kyrgyzstan |
+| Aug 30–31 | 26th SCO Summit, Bishkek |
+| Sep 1 | Apple CEO handover (Ternus takes charge) |
+| Sep 2 | FM Sitharaman US/G-20 Finance talks end |
+| **Sep 5** | **US NFP / Non-Farm Payrolls (August)** |
+| **Sep 16–17** | **US Fed FOMC rate decision (hike signalled by Warsh)** |
+| Oct 26 | HDFC Bank CEO Jagdishan term ends |
+| Dec 31 | Tata Sons AGM deadline |
+| Jan 1, 2027 | US 50% tariffs on Canadian autos/steel deadline |
+**Step 2 — Event extraction from 6 headlines:**
+
+Scanning against criteria (scheduled + concrete date + market-moving):
+
+| # | Headline | Assessment |
+|---|----------|------------|
+| 1 | HDFC Bank CEO stepping down | "October" — no concrete date; corporate governance, not macro |
+| 2 | Amazon sub-same-day delivery | Not market-calendar relevant |
+| 3 | Fed Jackson Hole Conference | **PAST** — winding down Aug 29 (Kevin Warsh's first speech as chair done) |
+| 4 | Iran war / energy reshaping | No dated event; ongoing situation |
+| 5 | US-Canada trade war — 5 issues | No concrete deadline mentioned |
+| 6 | Money rules changing Sep 1 | **CONCRETE DATES** — see below |
+
+---
+
+**Extracted future events (2 found):**
+
+| Date | Event | Category |
+|------|-------|----------|
+| **2026-08-31 (Mon)** | ITR filing deadline + Aadhaar authentication deadline | Regulatory / tax compliance |
+| **2026-09-01 (Tue)** | LPG & ATF price revision; banking charges revision; KYC update rules effective | Fuel pricing / banking regulatory |
+
+---
+
+**Tier-1 macro events** (RBI MPC, CPI, FOMC, NFP, GDP, etc.) — **none found** in this batch of 6 headlines.
+
+**Note:** The Jackson Hole conference is complete; key takeaway is Kevin Warsh (new Fed chair) gave his first policy speech — watch for any rate-path signals in follow-up coverage next week.
+
+`scanned_through: 2026-08-30T00:37:19+05:30`
+**STEP 2 — Events identified**
+
+Scanning 8 headlines against the criteria (future, dated, market-moving macro/geopolitical events):
+
+| Date | Event | Source signal |
+|------|-------|--------------|
+| **2026-08-31** (tomorrow) | ITR filing + Aadhaar authentication deadline | Mint personal-finance |
+| **2026-09-01** | LPG + ATF price revision; banking charge changes effective | Mint personal-finance |
+| **October 2026** (no firm date yet) | HDFC Bank CEO Jagdishan stepping down; successor search fast-tracked | ET / Mint |
+
+**Excluded:**
+- Jackson Hole / Fed (winding down 2026-08-29 — already past as of today)
+- US-Canada trade war, Iran energy impact, Acrisure/Guggenheim, Amazon, judiciary — no concrete future calendar date attached
+
+**Note:** The prompt was truncated before STEP 3 instructions arrived (cut off at "Resolve relative wording (next…"). The `scanned_through` value to echo back is **`2026-08-30T01:10:33+05:30`**. Please resend the full STEP 3 instruction so I can POST the events to the correct endpoint.
+**Done.** 3 events ingested, `scanned_through` advanced to `2026-08-29T20:30:00+00:00`.
+
+**Events added this run:**
+| Date | Event |
+|------|-------|
+| 2026-08-31 | ITR filing & Aadhaar authentication deadline |
+| 2026-09-01 | LPG + ATF price revision; banking charges update |
+| 2026-10-31 | HDFC Bank CEO Jagdishan steps down; successor search begins |
+
+There are **16 events** in the pending queue awaiting your approval, including notable ones from prior scans: US FOMC rate decision (Sep 16–17, hike signalled by Chair Warsh), US NFP Aug jobs report (Sep 5), SCO Summit / PM Modi Central Asia visit (Aug 30–31), FM Sitharaman G20 Finance talks (Sep 2), HDFC CEO transition (Oct 26), Tata Sons AGM deadline (Dec 31), and US 50% tariffs on Canadian autos/steel (Jan 1 2027).
+No new headlines — the scan returned 0 items (scanned_through: `2026-08-29T20:30:00+00:00`). Nothing to calendar.
+**Step 3 complete.** Cursor advanced to `2026-08-29T22:40:51+00:00`. 0 new events added from this scan (the single headline had no concrete dated future event). 16 existing pending suggestions already in the queue.
+**Scan complete.** Cursor advanced to `2026-08-29T23:30:00+00:00`.
+
+The single new headline (DRI gold smuggling probe, Indore) contained no schedulable macro event — nothing posted.
+
+The response surfaced **15 already-pending suggestions** awaiting your approval. Notable ones worth actioning:
+
+| Date | Event | Category |
+|------|-------|----------|
+| Aug 30 | 26th SCO Summit, Bishkek (PM Modi) | Geopolitical |
+| Aug 31 | SCO Summit Day 2 + ITR/Aadhaar deadline | Geopolitical / Regulatory |
+| Sep 1 | LPG + ATF price revision; banking charges update | Commodity |
+| Sep 5 | US Non-Farm Payrolls (Aug Jobs Report) | Macro |
+| Sep 16–17 | US Fed FOMC rate decision (hike signalled by Chair Warsh) | Macro |
+| Oct 26–31 | HDFC Bank CEO Jagdishan exit | Corporate |
+| Dec 31 | Tata Sons AGM deadline | Corporate |
+| Jan 1 2027 | US 50% tariffs on Canadian autos/steel | Macro |
+Done. Cursor advanced to `2026-08-30T06:08:06+05:30`. 0 new events from this batch (all 6 headlines were noise — ongoing conflict, infra/weather). 16 events remain pending approval in the calendar.
+**scanned_through:** `2026-08-30T07:13:02+05:30`
+
+---
+
+**Scheduled events extracted from 10 headlines:**
+
+| Date | Event | Source |
+|------|-------|--------|
+| **4 Sep 2026** | Janmashtami — bank holiday in multiple cities; check if NSE/BSE declare exchange holiday | Mint |
+| **11 Sep 2026** | Jaipur local elections — bank holiday in Jaipur only; not a national exchange holiday | Mint |
+| **Week of 31 Aug 2026** | Three mainboard IPOs open: **Purple Style Labs**, **Deepa Jewellers**, **Rays of Belief** (combined raise up to ₹1,265 cr) | NDTV Profit / Zerodha |
+
+No RBI MPC, CPI, FOMC, NFP, GDP, ECB/BoJ, OPEC, or geopolitical summit dates surfaced in this batch. All other headlines were opinion, personal finance, or company-specific without a concrete event date.
+Done. Both events ingested (added: 2, skipped: 0). Cursor advanced to `2026-08-30T08:35:53+05:30`.
+
+**Submitted:**
+| Event | Date | Category |
+|---|---|---|
+| India GDP — Q1 FY27 (Apr–Jun 2026) | 2026-08-31 | Macro |
+| Janmashtami — Market Holiday | 2026-09-04 | Macro |
+**Step 2 — Event extraction**
+
+Scanned 4 headlines. Applying the rules (future, concrete date, macro-moving category):
+
+| # | Headline | Assessment |
+|---|----------|------------|
+| 1 | US-Venezuela oil deal (Trump) | Past/concluded announcement — no future calendar date |
+| 2 | Iceland EU referendum (counting ongoing) | Vote is happening now — no future date |
+| 3 | Nifty/Sensex outlook for 31 Aug | Market commentary — no scheduled event |
+| 4 | Debt mutual funds for young investors | Personal finance opinion — no event |
+
+**0 qualifying events extracted.** None of the headlines contain a future, concretely dated economic/policy/geopolitical event from the target categories.
+
+---
+
+**Step 3** — the prompt was cut off before the Step 3 instructions arrived. I have the required value ready:
+
+```
+scanned_through = "2026-08-30T04:01:02+00:00"
+```
+
+Please share the Step 3 instructions (the POST endpoint / payload format) and I'll execute it immediately.
+Done. **3 events added** (0 skipped). The full pending queue now has 21 suggestions awaiting approval. Summary of what was just ingested:
+
+| Date | Event |
+|------|-------|
+| 2026-08-31 | India Q1 GDP release (Apr–Jun 2026) |
+| 2026-09-04 | US NFP / Non-Farm Payrolls (August 2026) |
+| 2026-10-12 | Union Budget 2027-28 preparation begins |
+
+Cursor advanced to `2026-08-30T10:34:11+05:30`.
+Done.
+
+**Scan result:** 6 headlines processed, **0 new events** extracted. All 6 were retrospective market-cap moves, personal finance explainers, a local fire incident, and company commentary — none met the criteria (future, scheduled, concrete date, market-moving).
+
+**Cursor advanced** to `2026-08-30T11:33:31+05:30`.
+
+The pending queue (shown above for reference) already has 20 suggestions from prior scans — notable upcoming ones:
+- **2026-08-31** — India Q1 FY27 GDP release
+- **2026-09-04** — Janmashtami market holiday; US NFP (August)
+- **2026-09-16/17** — US Fed FOMC rate decision (hike signalled by Chair Warsh)
+- **2026-10-12** — Union Budget 2027-28 exercise begins
+- **2026-10-26/31** — HDFC Bank CEO Jagdishan transition
+Done.
+
+**Added:** 1 new event — GST Council Meeting (2026-09-12)
+**Cursor advanced** to `2026-08-30T12:21:52+05:30`
+
+**Events extracted from this batch:**
+| Event | Date | Category |
+|---|---|---|
+| GST Council Meeting | 2026-09-12 | Macro |
+
+**Excluded:**
+- HDFC Bank CEO succession (Oct 26) — corporate governance, not a macro/policy calendar event
+- Nirmala Sitharaman US visit — already captured in prior scan as G-20 Finance talks (Sep 2)
+- All other headlines — no concrete future dated event
+**scanned_through: `2026-08-30T08:08:30+00:00`**
+
+---
+
+**Qualifying calendar events extracted:**
+
+| # | Event | Date | Relevance |
+|---|-------|------|-----------|
+| 1 | **26th SCO Summit** — Bishkek, Kyrgyzstan | ~Sep 1–2, 2026 | PM Modi attending after 2-day Tashkent stop (trip begins Aug 30). India-China-Russia diplomatic signals; energy/trade optics. |
+
+---
+
+**Rejected (did not qualify):**
+
+- **Iceland EU referendum** — result Aug 30 (today, not future); minimal India market impact.
+- **India-Chile CEPA** — "this year" only; no concrete date.
+- **HDFC Bank CEO succession** — corporate leadership, not a macro/policy event.
+- **IPOs next week** — primary market, not macro calendar scope.
+
+---
+
+Step 3 instructions were cut off in your prompt — cannot POST back to the API without knowing the endpoint and payload schema. Please provide the rest of the instructions (the step 3 curl command) and I will complete it immediately.
+**Step 3 — Done.** 2 new events ingested, cursor advanced to `2026-08-30T14:30:27+05:30`.
+
+**New suggestions added:**
+| Date | Event |
+|------|-------|
+| 2026-09-01 | SCO Summit (26th), Bishkek — PM Modi attends |
+| 2026-10-26 | HDFC Bank CEO transition — Jagdishan retirement |
+
+**Full pending queue for review (22 items):**
+| Date | Event | Category |
+|------|-------|----------|
+| 2026-08-31 | India Q1 GDP release (Apr–Jun 2026) | Economic |
+| 2026-08-31 | ITR filing & Aadhaar auth deadline | Regulatory |
+| 2026-08-31 | 26th SCO Summit, Bishkek (duplicate, date variant) | Geopolitical |
+| 2026-09-01 | SCO Summit (26th), Bishkek — PM Modi *(new)* | Geopolitical |
+| 2026-09-01 | LPG + ATF price revision; banking charges | Commodity |
+| 2026-09-01 | Apple CEO handover — John Ternus takes charge | Global |
+| 2026-09-02 | FM Sitharaman US/G-20 finance talks end | Policy |
+| 2026-09-04 | Janmashtami — Market Holiday | Macro |
+| 2026-09-04/05 | US NFP / Non-Farm Payrolls (August 2026) | Economic |
+| 2026-09-12 | GST Council Meeting | Macro |
+| 2026-09-16/17 | US Fed FOMC rate decision (hike signalled) | Macro |
+| 2026-10-12 | Budget 2027-28 preparation begins | Policy |
+| 2026-10-26 | HDFC Bank CEO — Jagdishan retirement *(new)* | Corporate |
+| 2026-12-31 | Tata Sons AGM deadline | Corporate |
+| 2027-01-01 | US 50% tariffs on Canadian autos/steel | Trade |
+Cursor advanced. 0 new events added from this batch (13 headlines had no qualifying future-dated events). 24 events remain pending in the queue.
+No new headlines (`count: 0`). Nothing to process — the feed is already up to date through `2026-08-30T14:59:17+00:00`. No calendar events to post.
+Done. The `/calendar/macro-scan/advance` endpoint doesn't exist on this backend — the cursor is already up to date at `2026-08-30T14:59:17Z`. No new headlines were returned (count = 0), so there are no events to add to the calendar.
+^C

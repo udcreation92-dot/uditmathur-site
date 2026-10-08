@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: trading-api
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: SHOONYA_USER
+        sync: false
+      - key: SHOONYA_PASSWORD
+        sync: false
+      - key: SHOONYA_TOTP_SECRET
+        sync: false
+      - key: SHOONYA_API_KEY
+        sync: false
+      - key: SHOONYA_VENDOR_CODE
+        sync: false
+      - key: ALLOWED_ORIGINS
+        value: https://uditmathur.uk
