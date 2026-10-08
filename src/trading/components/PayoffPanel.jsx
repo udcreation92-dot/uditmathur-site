@@ -1,11 +1,11 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useId } from "react";
 import { api } from "../api";
 
 // Parses strike + option type out of a Fyers option symbol. Two formats exist:
-// weekly  "NSE:NIFTY2670724800CE"  -> root NIFTY, YYMDD "26707", strike 24800
+// weekly  "NSE:NIFTY2670724800CE"  -> root NIFTY, YYMDD "26707", strike 24800 (M = 1-9, O/N/D for Oct-Dec: "26O13")
 // monthly "NSE:NIFTY26JUL24800CE"  -> root NIFTY, YYMMM "26JUL", strike 24800
 const MONTHLY_RE = /^([A-Z-&]+)(\d{2})(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)(\d+(?:\.\d+)?)(CE|PE)$/;
-const WEEKLY_RE = /^([A-Z-&]+)(\d{5})(\d+(?:\.\d+)?)(CE|PE)$/;
+const WEEKLY_RE = /^([A-Z-&]+)(\d{2}[1-9OND]\d{2})(\d+(?:\.\d+)?)(CE|PE)$/;
 
 export function parseOptionSymbol(symbol) {
   const body = (symbol.includes(":") ? symbol.split(":")[1] : symbol).toUpperCase();
@@ -46,7 +46,9 @@ function fmtMoney(v) {
 // Expiry payoff panel for the strategy being built — Sensibull-style: max profit / max loss /
 // breakevens up top, green-above-zero red-below-zero payoff curve underneath. Premiums come
 // from each leg's limit price when set, else the live LTP.
-export default function PayoffPanel({ legs: rawLegs, realized = 0, onAnalysis }) {
+export default function PayoffPanel({ legs: rawLegs, realized = 0, onAnalysis, spot = null }) {
+  // Unique clip ids — two panels on one page (a card's payoff + the combined view) must not share them.
+  const clipId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const [quotes, setQuotes] = useState({}); // symbol -> ltp
   const [loadingQuotes, setLoadingQuotes] = useState(false);
 
@@ -194,12 +196,12 @@ export default function PayoffPanel({ legs: rawLegs, realized = 0, onAnalysis })
 
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
         <defs>
-          <clipPath id="payoff-above"><rect x="0" y="0" width={W} height={zeroY} /></clipPath>
-          <clipPath id="payoff-below"><rect x="0" y={zeroY} width={W} height={H - zeroY} /></clipPath>
+          <clipPath id={`${clipId}-above`}><rect x="0" y="0" width={W} height={zeroY} /></clipPath>
+          <clipPath id={`${clipId}-below`}><rect x="0" y={zeroY} width={W} height={H - zeroY} /></clipPath>
         </defs>
         {/* profit region green, loss region red; payoff line amber — terminal palette */}
-        <path d={areaPath} fill="rgb(63 178 107 / 0.16)" clipPath="url(#payoff-above)" />
-        <path d={areaPath} fill="rgb(224 108 117 / 0.15)" clipPath="url(#payoff-below)" />
+        <path d={areaPath} fill="rgb(63 178 107 / 0.16)" clipPath={`url(#${clipId}-above)`} />
+        <path d={areaPath} fill="rgb(224 108 117 / 0.15)" clipPath={`url(#${clipId}-below)`} />
         <line x1={PAD_X} y1={zeroY} x2={W - PAD_X} y2={zeroY} stroke="#3a3a3a" strokeWidth="1" />
         <path d={linePath} fill="none" stroke="#e0a83b" strokeWidth="2" />
         {breakevens.map((b, i) => (
@@ -210,6 +212,14 @@ export default function PayoffPanel({ legs: rawLegs, realized = 0, onAnalysis })
             </text>
           </g>
         ))}
+        {spot != null && spot > analysis.lo && spot < analysis.hi && (
+          <g>
+            <line x1={X(spot)} y1={PAD_Y} x2={X(spot)} y2={H - PAD_Y} stroke="#5b9bd5" strokeWidth="1" />
+            <text x={X(spot) + 3} y={PAD_Y + 10} textAnchor="start" fill="#5b9bd5" fontSize="9">
+              Spot {spot.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </text>
+          </g>
+        )}
         {xTicks.map((t, i) => (
           <text key={i} x={X(t)} y={H - 3} textAnchor="middle" fill="#7a7a7a" fontSize="9">
             {t.toLocaleString(undefined, { maximumFractionDigits: 0 })}
