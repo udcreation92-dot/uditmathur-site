@@ -6,7 +6,8 @@ import { impliedVolPct } from "./iv";
 const R = 0.065; // risk-free (~91d T-Bill)
 
 const MONTHLY_RE = /^([A-Z&-]+?)(\d{2})(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)(\d+(?:\.\d+)?)(CE|PE)$/;
-const WEEKLY_RE = /^([A-Z&-]+?)(\d{5})(\d+(?:\.\d+)?)(CE|PE)$/;
+// Weekly date code is YY + M + DD where M is 1-9 for Jan-Sep and O/N/D for Oct-Dec ("26O13").
+const WEEKLY_RE = /^([A-Z&-]+?)(\d{2}[1-9OND]\d{2})(\d+(?:\.\d+)?)(CE|PE)$/;
 const FUT_RE = /^([A-Z&-]+?)\d{2}[A-Z]{3}FUT$/;
 
 // { kind: 'option'|'future'|'other', type: 'CE'|'PE'|null, strike, root }

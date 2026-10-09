@@ -768,7 +768,7 @@ function MoveLegPanel({ strategy, leg, strategyNames, onDone, onCancel }) {
   );
 }
 
-function StrategyCard({ strategy, strategyNames, onClose, onLegChanged, bulletinMatches, defaultLegsOpen = false, onSendToBuilder, greeks: greeksProp }) {
+function StrategyCard({ strategy, strategyNames, onClose, onLegChanged, bulletinMatches, defaultLegsOpen = false, onSendToBuilder, greeks: greeksProp, onSelectUnderlying, underlyingSelected }) {
   const pnl = strategy.total_pl;
   const [exitingLegId, setExitingLegId] = useState(null);
   const [movingLegId, setMovingLegId] = useState(null);
@@ -844,7 +844,13 @@ function StrategyCard({ strategy, strategyNames, onClose, onLegChanged, bulletin
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-medium text-indigo-300 bg-indigo-900/40 border border-indigo-800 rounded px-2 py-0.5">{stratType}</span>
-            {strategy.underlying && <span className="text-lg font-semibold text-white">{strategy.underlying}</span>}
+            {strategy.underlying && (onSelectUnderlying ? (
+              <button onClick={() => onSelectUnderlying(strategy.underlying)}
+                title={`Combined breakeven & payoff across all open ${strategy.underlying} strategies`}
+                className={`text-lg font-semibold underline decoration-dotted underline-offset-4 ${underlyingSelected ? "text-amber-300 decoration-amber-400" : "text-white decoration-gray-600 hover:text-amber-200"}`}>
+                {strategy.underlying}
+              </button>
+            ) : <span className="text-lg font-semibold text-white">{strategy.underlying}</span>)}
             <span className="text-sm text-gray-400">{strategy.name}</span>
             {bulletinMatches?.length > 0 && (
               <button onClick={() => setShowBulletin(b => !b)}
@@ -1732,6 +1738,69 @@ function RefreshSelect({ refreshMs, setRefreshMs }) {
   );
 }
 
+// Combined view for one underlying: every OPEN strategy's legs pooled into a single expiry payoff,
+// so the breakevens are those of the whole book on that scrip (not any one strategy). Opened by
+// clicking the underlying's name on a strategy card; rendered below the strategy list.
+function CombinedUnderlyingPanel({ root, strategies, greeksById, onClose }) {
+  const [analysis, setAnalysis] = useState(null);
+  const legs = useMemo(() => strategies.flatMap(s => s.legs.filter(l => l.qty > 0).map(l => ({
+    symbol: l.symbol, side: l.side, quantity: l.qty, limit_price: l.entry || 0,
+  }))), [strategies]);
+  const realized = strategies.reduce((a, s) => a + (s.realized_total || 0), 0);
+  const pl = strategies.reduce((a, s) => a + (s.total_pl || 0), 0);
+  const margin = strategies.reduce((a, s) => a + (s.margin || 0), 0);
+  const greeks = strategies.reduce((a, s) => {
+    const g = greeksById[s.id];
+    if (g) { a.delta += g.delta; a.theta += g.theta; }
+    return a;
+  }, { delta: 0, theta: 0 });
+  const spot = strategies.find(s => s.spot != null)?.spot ?? null;
+  const expiries = [...new Set(strategies.map(s => s.expiry).filter(Boolean))].sort();
+
+  // Nearest breakeven on each side of spot, with the cushion as % of spot.
+  const bes = analysis?.breakevens || [];
+  const below = spot != null ? bes.filter(b => b <= spot).pop() : undefined;
+  const above = spot != null ? bes.find(b => b > spot) : undefined;
+  const cushion = b => `${b >= spot ? "+" : ""}${((b - spot) / spot * 100).toFixed(2)}% from spot`;
+  const fmt = v => v.toLocaleString("en-IN", { maximumFractionDigits: 0 });
+
+  return (
+    <div className="bg-gray-900 border border-amber-800/60 rounded-xl p-4">
+      <div className="flex justify-between items-start gap-4 flex-wrap mb-3">
+        <div>
+          <h3 className="text-sm font-semibold text-amber-300">{root} · combined across {strategies.length} open {strategies.length === 1 ? "strategy" : "strategies"}</h3>
+          <p className="text-[11px] text-gray-500 mt-0.5">#{strategies.map(s => s.id).join(", #")} · {legs.length} legs · expiry {expiries.join(", ") || "—"}</p>
+        </div>
+        <button onClick={onClose} className="text-xs text-gray-400 hover:text-white border border-gray-700 rounded px-3 py-1">Close</button>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-3">
+        {spot != null && <StatTile label="Spot" value={fmt(spot)} />}
+        <StatTile label="Lower BE" value={below != null ? fmt(below) : "—"} sub={below != null ? cushion(below) : null}
+          title="Nearest combined breakeven below spot — at expiry the pooled position is in loss under this level." />
+        <StatTile label="Upper BE" value={above != null ? fmt(above) : "—"} sub={above != null ? cushion(above) : null}
+          title="Nearest combined breakeven above spot — at expiry the pooled position is in loss over this level." />
+        <StatTile label="Total P&L" value={`${pl >= 0 ? "+" : ""}₹${pl.toFixed(0)}`} tone={pl} />
+        <StatTile label="Margin" value={fmtLakh(margin)} />
+        <StatTile label="Net Δ / θ" value={`${GREEK_FMT(greeks.delta, 0)} / ${GREEK_FMT(greeks.theta, 0)}`} tone={greeks.theta}
+          title="Net delta (underlying-share equivalents) / net theta (₹ per day) across these strategies" />
+      </div>
+      {bes.length > 2 && (
+        <p className="text-[11px] text-gray-400 mb-2">All breakevens: {bes.map(fmt).join(" · ")}</p>
+      )}
+
+      <PayoffPanel legs={legs} realized={realized} spot={spot} onAnalysis={setAnalysis} />
+      {expiries.length > 1 && (
+        <p className="text-[10px] text-amber-500/80 mt-1">
+          Mixed expiries ({expiries.join(", ")}): the curve values every leg at intrinsic, i.e. P&L if spot sits at that level
+          when each leg expires. The far-dated legs' remaining time value is ignored, so before the last expiry the real breakevens are tighter.
+        </p>
+      )}
+      {realized ? <p className="text-[10px] text-gray-600 mt-1">Includes ₹{Math.round(realized).toLocaleString("en-IN")} realized from closed legs.</p> : null}
+    </div>
+  );
+}
+
 function ByStrategyView({ onSendToBuilder }) {
   const [strategies, setStrategies] = useState([]);
   const [unassigned, setUnassigned] = useState([]);
@@ -1747,6 +1816,8 @@ function ByStrategyView({ onSendToBuilder }) {
   const [filterUnderlying, setFilterUnderlying] = useState("");
   const [filterMode, setFilterMode] = useState("all"); // all | time | direction (θ-ROI vs Live ROI)
   const [volByRoot, setVolByRoot] = useState({});       // underlying root -> volatility payload, for sorting
+  const [combinedRoot, setCombinedRoot] = useState(null); // underlying whose combined breakeven panel is open
+  const combinedRef = useRef(null);
   const inFlight = useRef(false); // guard so a slow /strategy/list poll never overlaps itself
 
   const load = useCallback(async (silent = false) => {
@@ -1827,6 +1898,11 @@ function ByStrategyView({ onSendToBuilder }) {
   const greeksById = useMemo(
     () => Object.fromEntries(strategies.filter(s => s.status === "OPEN").map(s => [s.id, strategyGreeks(s)])),
     [strategies]);
+
+  // Bring the combined panel into view when an underlying is picked (it renders below the list).
+  useEffect(() => {
+    if (combinedRoot) combinedRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [combinedRoot]);
 
   if (loading) return <div className="text-gray-400 text-sm">Loading…</div>;
   if (error) return <p className="text-red-400 text-sm">{error}</p>;
@@ -1921,9 +1997,20 @@ function ByStrategyView({ onSendToBuilder }) {
       <div className="grid grid-cols-1 gap-3">
         {visible.map(s => (
           <StrategyCard key={s.id} strategy={s} strategyNames={strategyNames} onClose={handleClose} onLegChanged={load}
-            bulletinMatches={bulletinByStrategy[s.id]} onSendToBuilder={onSendToBuilder} greeks={greeksById[s.id]} />
+            bulletinMatches={bulletinByStrategy[s.id]} onSendToBuilder={onSendToBuilder} greeks={greeksById[s.id]}
+            onSelectUnderlying={u => setCombinedRoot(r => (r === u ? null : u))} underlyingSelected={combinedRoot === s.underlying} />
         ))}
       </div>
+
+      {combinedRoot && (() => {
+        const group = openStrategies.filter(s => s.underlying === combinedRoot);
+        if (group.length === 0) return null;
+        return (
+          <div ref={combinedRef} className="scroll-mt-4">
+            <CombinedUnderlyingPanel root={combinedRoot} strategies={group} greeksById={greeksById} onClose={() => setCombinedRoot(null)} />
+          </div>
+        );
+      })()}
 
       {unassigned.length > 0 && (
         <div className="bg-yellow-900/10 border border-yellow-800/50 rounded-lg p-3">
