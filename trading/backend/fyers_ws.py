@@ -22,6 +22,9 @@ _socket: "data_ws.FyersDataSocket | None" = None
 _connected = False
 _last_error: str | None = None
 _started = False
+_token_used: str | None = None      # the token the CURRENT socket was built with (for refresh detection)
+_last_restart = 0.0                 # cooldown so the watchdog can't thrash-restart
+_watchdog_started = False
 
 # Per-tick listeners: called (outside the cache lock) with the ticked symbol on every update, so
 # consumers like the T-Bill auto-buy can react the instant an ask moves instead of polling. Keep
@@ -119,7 +122,7 @@ def _run_socket():
     """Construct AND connect the socket entirely in this background thread. The FyersDataSocket
     constructor and connect() can each make blocking network calls, so they must NEVER run on the
     request/startup path — otherwise a slow/refused Fyers handshake would wedge the whole backend."""
-    global _socket, _started, _last_error
+    global _socket, _started, _last_error, _token_used
     token = _access_token()
     if not token:
         with _lock:
@@ -133,6 +136,7 @@ def _run_socket():
         )
         with _lock:
             _socket = sock
+            _token_used = token   # remember which token this socket runs on, for refresh detection
         sock.connect()  # blocks in THIS thread only (SDK runs its keep-alive loop here)
     except Exception as e:
         _last_error = str(e)
@@ -144,6 +148,7 @@ def ensure_started() -> bool:
     """Kick off the socket in the background if a token exists. Returns immediately — NEVER blocks
     the caller (startup hook / request handler). No-op once started."""
     global _started
+    _ensure_watchdog()   # self-heals a token refresh / dead feed (daily broker re-login breaks the SDK's own reconnect)
     with _lock:
         if _started:
             return True
@@ -152,6 +157,81 @@ def ensure_started() -> bool:
         _started = True
     threading.Thread(target=_run_socket, daemon=True).start()
     return True
+
+
+def _close_socket():
+    """Tear down the current socket so a fresh one can be built with a new token. The SDK's own
+    reconnect reuses the token it was constructed with, so a token refresh needs a full rebuild."""
+    global _socket, _connected
+    with _lock:
+        sock, _socket = _socket, None
+        _connected = False
+    if sock is not None:
+        try:
+            if hasattr(sock, "keep_running"):
+                sock.keep_running = False   # stop the SDK's auto-reconnect loop
+        except Exception:
+            pass
+        try:
+            sock.close_connection()
+        except Exception:
+            pass
+
+
+def restart(reason: str = "") -> dict:
+    """Rebuild the socket with the CURRENT access token and replay subscriptions. Call this after the
+    daily broker re-login refreshes the Fyers token — otherwise the SDK keeps reconnecting with the
+    stale token ('Please provide valid token') and the whole live feed silently dies at market open."""
+    global _started, _last_error, _last_restart
+    _close_socket()
+    with _lock:
+        _started = False
+        _last_restart = time.time()
+        _last_error = f"restarted: {reason}" if reason else "restarted"
+    ensure_started()
+    return status()
+
+
+def _is_market_hours() -> bool:
+    import datetime
+    ist = datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)
+    if ist.weekday() >= 5:   # Sat/Sun
+        return False
+    mins = ist.hour * 60 + ist.minute
+    return 9 * 60 + 15 <= mins <= 15 * 60 + 30
+
+
+def _watchdog():
+    """Every 45s: if the on-disk token no longer matches the socket's token (daily re-login), or the
+    feed has gone stale/invalid-token during market hours, rebuild the socket with the fresh token."""
+    while True:
+        time.sleep(45)
+        try:
+            cur = _access_token()
+            if cur and _token_used and cur != _token_used:
+                restart("token refreshed")
+                continue
+            if not _is_market_hours() or not _started:
+                continue
+            if time.time() - _last_restart < 120:   # cooldown
+                continue
+            st = status()
+            stale = (st["newest_tick_age_s"] is not None and st["newest_tick_age_s"] > 90
+                     and len(_subscribed) > 0)
+            bad_token = st.get("last_error") and "valid token" in str(st["last_error"]).lower()
+            if stale or bad_token:
+                restart("stale feed" if stale else "invalid token")
+        except Exception:
+            pass
+
+
+def _ensure_watchdog():
+    global _watchdog_started
+    with _lock:
+        if _watchdog_started:
+            return
+        _watchdog_started = True
+    threading.Thread(target=_watchdog, daemon=True).start()
 
 
 def subscribe(symbols: list[str]) -> dict:

@@ -134,6 +134,16 @@ def run_all(force: bool = False, shoonya_retry: bool = False) -> dict:
                 except Exception as e:
                     results["Shoonya"] = {"ok": False, "message": str(e)}
 
+        # A fresh Fyers login refreshes the token, but the data socket's own auto-reconnect keeps
+        # reusing the OLD token ("Please provide valid token") — so the whole live feed stays dead at
+        # market open until rebuilt. Restart it here the moment Fyers re-logs in.
+        if results.get("Fyers", {}).get("ok"):
+            try:
+                import fyers_ws
+                fyers_ws.restart("fyers re-login")
+            except Exception:
+                pass
+
         failures = []
         for name, r in results.items():
             if not r.get("ok"):

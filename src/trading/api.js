@@ -50,6 +50,13 @@ export const api = {
   getOptionChain: (symbol, strikeCount = 10, timestamp = "") =>
     request(`/market/option-chain?symbol=${encodeURIComponent(symbol)}&strike_count=${strikeCount}&timestamp=${timestamp}`),
   getDepth: (symbol) => request(`/market/depth?symbol=${encodeURIComponent(symbol)}`),
+  // Historical candles for the chart. resolution: "1".."60" (minutes) | "D". from/to: "YYYY-MM-DD".
+  getCandles: (symbol, resolution, from, to) =>
+    request(`/market/candles?symbol=${encodeURIComponent(symbol)}&resolution=${encodeURIComponent(resolution)}&range_from=${from}&range_to=${to}`),
+  // Live tick feed (reuses the Fyers WS cache): subscribe a symbol, then poll the latest tick.
+  streamSubscribe: (symbols) => request(`/stream/subscribe`, { method: "POST", body: JSON.stringify({ symbols }) }),
+  streamQuotes: (symbols) => request(`/stream/quotes?symbols=${encodeURIComponent(symbols.join(","))}`),
+  listStrategies: () => request(`/strategy/list`),
   getTBills: () => request(`/market/tbills`),
   recordTbillPurchase: (symbol) => request(`/market/tbills/record-purchase?symbol=${encodeURIComponent(symbol)}`, { method: "POST" }),
   getTbillPurchases: () => request(`/market/tbills/purchases`),

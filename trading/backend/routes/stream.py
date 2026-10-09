@@ -31,6 +31,13 @@ def stream_unsubscribe(req: SubscribeRequest):
     return {"status": fyers_ws.unsubscribe(req.symbols)}
 
 
+@router.post("/restart")
+def stream_restart():
+    """Rebuild the Fyers data socket with the current token (use after a re-login, or if the live feed
+    has gone stale). The watchdog does this automatically, but this exposes it for manual recovery."""
+    return fyers_ws.restart("manual")
+
+
 @router.get("/quotes")
 def stream_quotes(symbols: str):
     """Latest streamed tick per symbol (comma-separated Fyers symbols). Instant dict lookup."""

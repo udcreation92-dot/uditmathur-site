@@ -11,6 +11,7 @@ import SpreadScanner from "./components/SpreadScanner";
 import TBills from "./components/TBills";
 import Scalps from "./components/Scalps";
 import VolatilityScanner from "./components/VolatilityScanner";
+import Chart from "./components/Chart";
 import BrokerFunds from "./components/BrokerFunds";
 import GttOrders from "./components/GttOrders";
 import Alerts from "./components/Alerts";
@@ -24,6 +25,7 @@ import { api } from "./api";
 
 const SYMBOL_TABS = [
   { id: "analysis", label: "Analysis" },
+  { id: "chart", label: "Chart" },
   { id: "options", label: "Option Chain" },
   { id: "order", label: "Place Order" },
   { id: "roi", label: "ROI Scanner" },
@@ -175,6 +177,7 @@ export default function TradingApp() {
                         <p className="tt-gate">▸ SELECT A SYMBOL ABOVE TO ACCESS THIS TOOL.</p>
                       )}
                       {tab === "analysis" && symbol && <AnalysisPanel symbol={symbol} />}
+                      {tab === "chart" && symbol && <Chart symbol={symbol} />}
                       {tab === "options" && symbol && <OptionChain symbol={symbol} onAddLegs={legs => sendToBuilder(legs, "append")} />}
                       {tab === "order" && symbol && <OrderPanel symbol={symbol} />}
                       {tab === "roi" && symbol && <RoiScanner symbol={symbol} onUseCombo={legs => sendToBuilder(legs, "replace")} />}
