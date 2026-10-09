@@ -50,11 +50,16 @@ export default function Chart({ symbol }) {
   const beIdsRef = useRef([]);        // overlay ids of breakeven lines
   const scalpIdsRef = useRef([]);     // overlay ids of scalp entry/SL/target lines
   const draggingRef = useRef(false);  // true while an order line is being dragged (pause reconcile)
+  const tempLineIdsRef = useRef([]);  // overlay ids of the "new scalp" placement lines
   const [period, setPeriod] = useState("15");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [beLegend, setBeLegend] = useState([]);   // [{ expiry, color, bes:[...] }] per expiry
   const [scalps, setScalps] = useState([]);       // active scalps on this symbol (for the legend)
+  const [newScalp, setNewScalp] = useState(null); // { stage:'entry'|'sl'|'target'|'confirm', entry, sl, target }
+  const [maxLoss, setMaxLoss] = useState(500);    // ₹ risk budget → qty
+  const [tradeType, setTradeType] = useState("MIS");
+  const [armBusy, setArmBusy] = useState(false);
 
   useEffect(() => { periodRef.current = period; }, [period]);
 
@@ -271,6 +276,57 @@ export default function Chart({ symbol }) {
     return () => { stopped = true; clearInterval(interval); clearLines(); };
   }, [symbol?.symbol]);
 
+  // ---- Create a scalp FROM the chart: place Entry → SL → Target lines, auto-detect side, arm ----
+  const STAGE = {
+    entry: { label: "ENTRY", color: "#3b82f6", next: "sl" },
+    sl: { label: "STOP-LOSS", color: "#ef4444", next: "target" },
+    target: { label: "TARGET", color: "#22c55e", next: "confirm" },
+  };
+  function clearTempLines() {
+    tempLineIdsRef.current.forEach(id => chartRef.current?.removeOverlay(id));
+    tempLineIdsRef.current = [];
+  }
+  function cancelNewScalp() { clearTempLines(); setNewScalp(null); }
+  function placeStage(stage) {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const id = chart.createOverlay({
+      name: "priceLine",
+      styles: { line: { color: STAGE[stage].color, style: "dashed", size: 2 }, text: { color: STAGE[stage].color } },
+      onDrawEnd: (e) => {
+        const v = Math.round((e?.overlay?.points?.[0]?.value || 0) * 100) / 100;
+        const next = STAGE[stage].next;
+        setNewScalp(p => ({ ...(p || {}), [stage]: v, stage: next }));
+        if (next !== "confirm") placeStage(next);
+        return false;
+      },
+    });
+    if (id) tempLineIdsRef.current.push(id);
+  }
+  function startNewScalp() { cancelNewScalp(); setNewScalp({ stage: "entry" }); placeStage("entry"); }
+  const newScalpSide = () => (newScalp?.entry != null && newScalp?.sl != null) ? (newScalp.sl < newScalp.entry ? "BUY" : "SELL") : null;
+  const newScalpValid = () => {
+    const { entry, sl, target } = newScalp || {}; const side = newScalpSide();
+    if (entry == null || sl == null || target == null || !side) return false;
+    return side === "BUY" ? (sl < entry && target > entry) : (sl > entry && target < entry);
+  };
+  const newScalpQty = () => {
+    const { entry, sl } = newScalp || {};
+    return (entry != null && sl != null && +maxLoss) ? Math.max(0, Math.floor(+maxLoss / Math.abs(entry - sl))) : 0;
+  };
+  async function armNewScalp() {
+    if (!newScalpValid()) return;
+    setArmBusy(true);
+    try {
+      await api.createScalp({
+        symbol: symbol.symbol, side: newScalpSide(),
+        entry_price: newScalp.entry, sl_price: newScalp.sl, target_price: newScalp.target,
+        max_loss: +maxLoss, trade_type: tradeType,
+      });
+      cancelNewScalp();   // the scalp effect draws the armed scalp's draggable lines
+    } catch (e) { alert("Create failed: " + e.message); }
+    finally { setArmBusy(false); }
+  }
 
   return (
     <div className="bg-gray-900 rounded-lg border border-gray-800 p-3">
@@ -284,6 +340,10 @@ export default function Chart({ symbol }) {
             </button>
           ))}
         </div>
+        <button onClick={newScalp ? cancelNewScalp : startNewScalp}
+          className={`px-2 py-0.5 text-xs rounded ${newScalp ? "bg-amber-600 text-white" : "bg-gray-800 text-blue-300 hover:bg-gray-700"}`}>
+          {newScalp ? "✕ cancel scalp" : "+ new scalp"}
+        </button>
         <span className="text-[11px] text-blue-400">— spot</span>
         {beLegend.map(l => (
           <span key={l.expiry} className="text-[11px]" style={{ color: l.color }}>
@@ -298,6 +358,35 @@ export default function Chart({ symbol }) {
         {loading && <span className="text-xs text-gray-500">loading…</span>}
         {error && <span className="text-xs text-red-400">{error}</span>}
       </div>
+
+      {newScalp && newScalp.stage !== "confirm" && (
+        <div className="mb-2 text-xs rounded px-3 py-2" style={{ background: "#111827", color: STAGE[newScalp.stage].color }}>
+          Click the chart to set the <b>{STAGE[newScalp.stage].label}</b> line.
+          {newScalp.entry != null && <span className="text-gray-500"> · entry {newScalp.entry}</span>}
+          {newScalp.sl != null && <span className="text-gray-500"> · SL {newScalp.sl}</span>}
+        </div>
+      )}
+      {newScalp?.stage === "confirm" && (
+        <div className="mb-2 text-xs rounded border border-gray-700 bg-gray-800 px-3 py-2 flex flex-wrap items-center gap-3">
+          <span className="font-semibold" style={{ color: newScalpSide() === "BUY" ? "#22c55e" : "#ef4444" }}>{newScalpSide() || "?"}</span>
+          <span className="text-blue-300">entry {newScalp.entry}</span>
+          <span className="text-red-400">SL {newScalp.sl}</span>
+          <span className="text-green-400">target {newScalp.target}</span>
+          <label className="flex items-center gap-1 text-gray-400">max loss ₹
+            <input type="number" value={maxLoss} onChange={e => setMaxLoss(e.target.value)} className="input-field w-20" />
+          </label>
+          <select value={tradeType} onChange={e => setTradeType(e.target.value)} className="input-field w-20">
+            <option value="MIS">MIS</option><option value="CNC">CNC</option>
+          </select>
+          <span className="text-gray-300">→ qty <b>{newScalpQty()}</b></span>
+          {!newScalpValid() && <span className="text-amber-400">SL &amp; target must bracket entry (BUY: SL below, target above)</span>}
+          <button onClick={armNewScalp} disabled={!newScalpValid() || armBusy || newScalpQty() < 1}
+            className="px-3 py-1 rounded bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-medium">
+            {armBusy ? "arming…" : "Arm scalp"}
+          </button>
+          <button onClick={cancelNewScalp} className="px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300">Cancel</button>
+        </div>
+      )}
       <div ref={containerRef} style={{ width: "100%", height: 540, backgroundColor: "#0b0f17" }} />
     </div>
   );
