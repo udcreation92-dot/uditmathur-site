@@ -51,6 +51,7 @@ export default function Chart({ symbol }) {
   const scalpIdsRef = useRef([]);     // overlay ids of scalp entry/SL/target lines
   const draggingRef = useRef(false);  // true while an order line is being dragged (pause reconcile)
   const tempLineIdsRef = useRef([]);  // overlay ids of the "new scalp" placement lines
+  const userDrawIdsRef = useRef([]);  // overlay ids of the user's own drawings (drawing toolbar)
   const [period, setPeriod] = useState("15");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -276,6 +277,12 @@ export default function Chart({ symbol }) {
     return () => { stopped = true; clearInterval(interval); clearLines(); };
   }, [symbol?.symbol]);
 
+  // Wipe the user's own drawings when switching symbol (they're per-symbol).
+  useEffect(() => () => {
+    userDrawIdsRef.current.forEach(id => chartRef.current?.removeOverlay(id));
+    userDrawIdsRef.current = [];
+  }, [symbol?.symbol]);
+
   // ---- Create a scalp FROM the chart: place Entry → SL → Target lines, auto-detect side, arm ----
   const STAGE = {
     entry: { label: "ENTRY", color: "#3b82f6", next: "sl" },
@@ -304,6 +311,22 @@ export default function Chart({ symbol }) {
     if (id) tempLineIdsRef.current.push(id);
   }
   function startNewScalp() { cancelNewScalp(); setNewScalp({ stage: "entry" }); placeStage("entry"); }
+
+  // ---- Drawing tools (klinecharts built-in overlays). User drawings are tracked separately so
+  // "Clear" only removes them, never the scalp/breakeven/expiry overlays. ----
+  const DRAW_TOOLS = [
+    { name: "segment", label: "Trend" }, { name: "rayLine", label: "Ray" },
+    { name: "horizontalStraightLine", label: "H" }, { name: "verticalStraightLine", label: "V" },
+    { name: "rect", label: "Rect" }, { name: "fibonacciLine", label: "Fib" }, { name: "text", label: "Text" },
+  ];
+  function drawTool(name) {
+    const id = chartRef.current?.createOverlay({ name });
+    if (id) userDrawIdsRef.current.push(id);
+  }
+  function clearDrawings() {
+    userDrawIdsRef.current.forEach(id => chartRef.current?.removeOverlay(id));
+    userDrawIdsRef.current = [];
+  }
   const newScalpSide = () => (newScalp?.entry != null && newScalp?.sl != null) ? (newScalp.sl < newScalp.entry ? "BUY" : "SELL") : null;
   const newScalpValid = () => {
     const { entry, sl, target } = newScalp || {}; const side = newScalpSide();
@@ -357,6 +380,16 @@ export default function Chart({ symbol }) {
         ))}
         {loading && <span className="text-xs text-gray-500">loading…</span>}
         {error && <span className="text-xs text-red-400">{error}</span>}
+      </div>
+
+      <div className="flex items-center gap-1 mb-2">
+        <span className="text-[10px] text-gray-500 mr-1">draw:</span>
+        {DRAW_TOOLS.map(t => (
+          <button key={t.name} onClick={() => drawTool(t.name)} title={`Draw ${t.label}`}
+            className="px-1.5 py-0.5 text-[11px] rounded bg-gray-800 text-gray-300 hover:bg-gray-700">{t.label}</button>
+        ))}
+        <button onClick={clearDrawings} className="px-1.5 py-0.5 text-[11px] rounded bg-gray-800 text-red-300 hover:bg-gray-700 ml-1">Clear</button>
+        <span className="text-[10px] text-gray-600 ml-1">(right-click a drawing to delete)</span>
       </div>
 
       {newScalp && newScalp.stage !== "confirm" && (
