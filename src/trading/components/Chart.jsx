@@ -106,6 +106,7 @@ export default function Chart({ symbol }) {
   const draggingRef = useRef(false);  // true while an order line is being dragged (pause reconcile)
   const tempLineIdsRef = useRef([]);  // overlay ids of the "new scalp" placement lines
   const userDrawIdsRef = useRef([]);  // overlay ids of the user's own drawings (drawing toolbar)
+  const selectedDrawRef = useRef(null); // id of the currently-selected user drawing (for Delete key)
   const [period, setPeriod] = useState("15");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -115,6 +116,7 @@ export default function Chart({ symbol }) {
   const [maxLoss, setMaxLoss] = useState(500);    // ₹ risk budget → qty
   const [tradeType, setTradeType] = useState("MIS");
   const [armBusy, setArmBusy] = useState(false);
+  const [magnet, setMagnet] = useState(false);   // snap drawing points to candle OHLC
 
   useEffect(() => { periodRef.current = period; }, [period]);
 
@@ -330,6 +332,23 @@ export default function Chart({ symbol }) {
     userDrawIdsRef.current = [];
   }, [symbol?.symbol]);
 
+  // Press Delete to remove the currently-selected drawing (alternative to right-click).
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "Delete") return;
+      const t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      const id = selectedDrawRef.current;
+      if (id && chartRef.current) {
+        chartRef.current.removeOverlay(id);
+        userDrawIdsRef.current = userDrawIdsRef.current.filter(x => x !== id);
+        selectedDrawRef.current = null;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   // ---- Create a scalp FROM the chart: place Entry → SL → Target lines, auto-detect side, arm ----
   const STAGE = {
     entry: { label: "ENTRY", color: "#3b82f6", next: "sl" },
@@ -346,6 +365,7 @@ export default function Chart({ symbol }) {
     if (!chart) return;
     const id = chart.createOverlay({
       name: "priceLine",
+      mode: magnet ? "strong_magnet" : "normal",
       styles: { line: { color: STAGE[stage].color, style: "dashed", size: 2 }, text: { color: STAGE[stage].color } },
       onDrawEnd: (e) => {
         const v = Math.round((e?.overlay?.points?.[0]?.value || 0) * 100) / 100;
@@ -367,7 +387,12 @@ export default function Chart({ symbol }) {
     { name: "rect", label: "Rect" }, { name: "fibonacciLine", label: "Fib" }, { name: "text", label: "Text" },
   ];
   function drawTool(name) {
-    const id = chartRef.current?.createOverlay({ name });
+    const id = chartRef.current?.createOverlay({
+      name,
+      mode: magnet ? "strong_magnet" : "normal",   // snap points to candle OHLC when magnet is on
+      onSelected: (e) => { selectedDrawRef.current = e?.overlay?.id ?? null; return false; },
+      onDeselected: () => { selectedDrawRef.current = null; return false; },
+    });
     if (id) userDrawIdsRef.current.push(id);
   }
   function clearDrawings() {
@@ -435,8 +460,12 @@ export default function Chart({ symbol }) {
           <button key={t.name} onClick={() => drawTool(t.name)} title={`Draw ${t.label}`}
             className="px-1.5 py-0.5 text-[11px] rounded bg-gray-800 text-gray-300 hover:bg-gray-700">{t.label}</button>
         ))}
-        <button onClick={clearDrawings} className="px-1.5 py-0.5 text-[11px] rounded bg-gray-800 text-red-300 hover:bg-gray-700 ml-1">Clear</button>
-        <span className="text-[10px] text-gray-600 ml-1">(right-click a drawing to delete)</span>
+        <button onClick={() => setMagnet(m => !m)} title="Snap drawing points to candle open/high/low/close"
+          className={`px-1.5 py-0.5 text-[11px] rounded ml-1 ${magnet ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-300 hover:bg-gray-700"}`}>
+          🧲 magnet{magnet ? " on" : ""}
+        </button>
+        <button onClick={clearDrawings} className="px-1.5 py-0.5 text-[11px] rounded bg-gray-800 text-red-300 hover:bg-gray-700 ml-1">Clear all</button>
+        <span className="text-[10px] text-gray-600 ml-1">delete one: right-click it, or click to select then press Delete</span>
       </div>
 
       {newScalp && newScalp.stage !== "confirm" && (
