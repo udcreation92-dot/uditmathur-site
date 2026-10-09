@@ -144,12 +144,13 @@ export default function Chart({ symbol }) {
     api.listStrategies()
       .then(strats => {
         if (cancelled || !chartRef.current) return;
+        // Script-wide breakeven: combine EVERY leg of EVERY open strategy on this underlying into one
+        // net book, so the lines are the breakevens of the whole position — not per-strategy clutter.
         const mine = (strats || []).filter(s => (s.status || "").toUpperCase() === "OPEN" && s.underlying_symbol === symbol.symbol);
-        const levels = new Set();
-        for (const s of mine) {
-          for (const be of strategyBreakevens(s.legs, s.spot)) levels.add(be);
-        }
-        [...levels].forEach(be => {
+        const allLegs = mine.flatMap(s => s.legs || []);
+        const spot = mine.find(s => s.spot)?.spot;
+        const levels = strategyBreakevens(allLegs, spot);
+        levels.forEach(be => {
           const id = chartRef.current.createOverlay({
             name: "priceLine", lock: true, points: [{ value: be }],
             styles: { line: { color: "#f59e0b", style: "dashed", size: 1 }, text: { color: "#f59e0b" } },
@@ -175,7 +176,7 @@ export default function Chart({ symbol }) {
           ))}
         </div>
         <span className="text-[11px] text-blue-400">— spot</span>
-        {beCount > 0 && <span className="text-[11px] text-amber-400">— {beCount} breakeven{beCount > 1 ? "s" : ""}</span>}
+        {beCount > 0 && <span className="text-[11px] text-amber-400">— net breakeven ({beCount})</span>}
         {loading && <span className="text-xs text-gray-500">loading…</span>}
         {error && <span className="text-xs text-red-400">{error}</span>}
       </div>
