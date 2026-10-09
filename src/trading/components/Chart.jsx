@@ -66,25 +66,85 @@ export default function Chart({ symbol }) {
     return () => { ro.disconnect(); dispose(el); chartRef.current = null; };
   }, []);
 
-  // (Re)load historical candles whenever the symbol or timeframe changes.
+  // Load candles + open-strategy breakevens TOGETHER (one effect, no race). On the daily view, extend
+  // the time axis with empty future trading-day bars up to the last expiry so the expiry VERTICAL lines
+  // land at their true dates (klinecharts otherwise clamps overlays past the last candle). Then draw
+  // per-expiry breakeven (horizontal) + expiry-date (vertical) overlays, colour-coded per expiry.
   useEffect(() => {
     if (!symbol?.symbol || !chartRef.current) return;
     let cancelled = false;
     setLoading(true); setError(null);
+    beIdsRef.current.forEach(id => chartRef.current.removeOverlay(id));
+    beIdsRef.current = [];
+    setBeLegend([]);
+
     const p = PERIODS.find(x => x.id === period) || PERIODS[2];
     const to = ymd(new Date());
     const from = ymd(new Date(Date.now() - p.days * 864e5));
-    api.getCandles(symbol.symbol, period, from, to)
-      .then(resp => {
-        if (cancelled) return;
-        const bars = (resp.candles || []).map(c => ({
-          timestamp: c[0] * 1000, open: c[1], high: c[2], low: c[3], close: c[4], volume: c[5],
-        }));
-        chartRef.current.applyNewData(bars);
-        if (!bars.length) setError("No candle data for this symbol/timeframe.");
-      })
-      .catch(e => { if (!cancelled) setError(e.message); })
+
+    Promise.all([
+      api.getCandles(symbol.symbol, period, from, to),
+      api.listStrategies().catch(() => []),
+    ]).then(([resp, strats]) => {
+      if (cancelled || !chartRef.current) return;
+      const chart = chartRef.current;
+      const bars = (resp.candles || []).map(c => ({
+        timestamp: c[0] * 1000, open: c[1], high: c[2], low: c[3], close: c[4], volume: c[5],
+      }));
+
+      const mine = (strats || []).filter(s => (s.status || "").toUpperCase() === "OPEN" && s.underlying_symbol === symbol.symbol);
+      const spot = mine.find(s => s.spot)?.spot;
+      const byExp = {};
+      for (const s of mine) (byExp[s.expiry] = byExp[s.expiry] || []).push(s);
+      const expiries = Object.keys(byExp).sort();
+
+      // Extend the DAILY axis with empty future trading-day bars up to the last expiry (so vertical
+      // expiry lines sit at the right dates). expDateToTs maps an expiry date -> its future bar ts.
+      const expDateToTs = {};
+      if (period === "D" && expiries.length && bars.length) {
+        const DAY = 86400000;
+        const istDate = (ms) => new Date(ms + 5.5 * 3600000).toISOString().slice(0, 10);
+        const istDow = (ms) => new Date(ms + 5.5 * 3600000).getUTCDay();
+        const lastTs = bars[bars.length - 1].timestamp;
+        const lastClose = bars[bars.length - 1].close;   // flat placeholder value keeps the y-axis valid
+        const maxExp = expiries[expiries.length - 1];
+        for (let t = lastTs + DAY; istDate(t) <= maxExp; t += DAY) {
+          if (istDow(t) === 0 || istDow(t) === 6) continue;   // skip weekends
+          bars.push({ timestamp: t, open: lastClose, high: lastClose, low: lastClose, close: lastClose, volume: 0, _future: true });
+          expDateToTs[istDate(t)] = t;
+        }
+      }
+
+      chart.applyNewData(bars);
+      try { chart.setBarSpace(12); } catch { /* noop */ }
+      if (!bars.length) { setError("No candle data for this symbol/timeframe."); return; }
+
+      const legend = [];
+      expiries.forEach((exp, i) => {
+        const color = EXPIRY_COLORS[i % EXPIRY_COLORS.length];
+        const legs = byExp[exp].flatMap(s => s.legs || []);
+        const bes = strategyBreakevens(legs, spot);
+        bes.forEach(be => {
+          const id = chart.createOverlay({
+            name: "priceLine", lock: true, points: [{ value: be }],
+            styles: { line: { color, style: "dashed", size: 1 }, text: { color } },
+          });
+          if (id) beIdsRef.current.push(id);
+        });
+        const vts = expDateToTs[exp] ?? new Date(exp + "T15:30:00+05:30").getTime();
+        if (vts) {
+          const vid = chart.createOverlay({
+            name: "verticalStraightLine", lock: true, points: [{ timestamp: vts }],
+            styles: { line: { color, style: "dashed", size: 1 } },
+          });
+          if (vid) beIdsRef.current.push(vid);
+        }
+        if (bes.length) legend.push({ expiry: exp, color, bes });
+      });
+      setBeLegend(legend);
+    }).catch(e => { if (!cancelled) setError(e.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
+
     return () => { cancelled = true; };
   }, [symbol?.symbol, period]);
 
@@ -116,9 +176,12 @@ export default function Chart({ symbol }) {
         // Roll the forming candle on the series' own cadence (robust to IST/UTC boundary offsets).
         const list = chart.getDataList();
         if (!list.length) return;
-        const last = list[list.length - 1];
-        const periodMs = (PERIODS.find(p => p.id === periodRef.current) || PERIODS[2]).ms;
         const now = Date.now();
+        // Roll the last REAL candle — skip the empty future (expiry-axis) placeholder bars.
+        let li = list.length - 1;
+        while (li > 0 && (list[li].timestamp > now || list[li].close == null)) li--;
+        const last = list[li];
+        const periodMs = (PERIODS.find(p => p.id === periodRef.current) || PERIODS[2]).ms;
         let bar;
         if (now >= last.timestamp + periodMs) {
           bar = { timestamp: last.timestamp + periodMs, open: ltp, high: ltp, low: ltp, close: ltp, volume: 0 };
@@ -139,43 +202,6 @@ export default function Chart({ symbol }) {
     };
   }, [symbol?.symbol]);
 
-  // Breakeven overlays: draw a labeled horizontal line for each open strategy on this underlying.
-  useEffect(() => {
-    if (!symbol?.symbol || !chartRef.current) return;
-    let cancelled = false;
-    // clear previous breakeven lines
-    beIdsRef.current.forEach(id => chartRef.current.removeOverlay(id));
-    beIdsRef.current = [];
-    setBeLegend([]);
-
-    api.listStrategies()
-      .then(strats => {
-        if (cancelled || !chartRef.current) return;
-        const mine = (strats || []).filter(s => (s.status || "").toUpperCase() === "OPEN" && s.underlying_symbol === symbol.symbol);
-        const spot = mine.find(s => s.spot)?.spot;
-        // Positions of DIFFERENT expiries can't be netted into one breakeven (they expire at different
-        // times), so group by expiry and give each its own net breakevens in its own colour.
-        const byExp = {};
-        for (const s of mine) (byExp[s.expiry] = byExp[s.expiry] || []).push(s);
-        const legend = [];
-        Object.keys(byExp).sort().forEach((exp, i) => {
-          const color = EXPIRY_COLORS[i % EXPIRY_COLORS.length];
-          const legs = byExp[exp].flatMap(s => s.legs || []);
-          const bes = strategyBreakevens(legs, spot);
-          bes.forEach(be => {
-            const id = chartRef.current.createOverlay({
-              name: "priceLine", lock: true, points: [{ value: be }],
-              styles: { line: { color, style: "dashed", size: 1 }, text: { color } },
-            });
-            if (id) beIdsRef.current.push(id);
-          });
-          if (bes.length) legend.push({ expiry: exp, color, bes });
-        });
-        setBeLegend(legend);
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [symbol?.symbol]);
 
   return (
     <div className="bg-gray-900 rounded-lg border border-gray-800 p-3">
