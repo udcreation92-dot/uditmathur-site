@@ -9,11 +9,16 @@ import { strategyBreakevens } from "../payoff";
 // Phase 2's draggable SL/target order lines can attach to the same instance.
 
 const PERIODS = [
-  { id: "1", label: "1m", days: 3, ms: 60_000 },
-  { id: "5", label: "5m", days: 7, ms: 300_000 },
-  { id: "15", label: "15m", days: 20, ms: 900_000 },
-  { id: "60", label: "1h", days: 60, ms: 3_600_000 },
-  { id: "D", label: "1D", days: 360, ms: 86_400_000 },   // Fyers caps a single daily request at ~366 days
+  { id: "1", label: "1m", intraday: true, days: 3, ms: 60_000 },
+  { id: "5", label: "5m", intraday: true, days: 7, ms: 300_000 },
+  { id: "15", label: "15m", intraday: true, days: 20, ms: 900_000 },
+  { id: "60", label: "1h", intraday: true, days: 60, ms: 3_600_000 },
+  // Daily-based: pull many years of DAILY (chunked, Fyers caps one request at ~366 days) and resample
+  // W/M/Q client-side (Fyers has no native weekly/monthly) — so 5-10yr swing charts are available.
+  { id: "D", label: "1D", years: 3, ms: 86_400_000 },
+  { id: "W", label: "1W", years: 8, resample: "W", ms: 7 * 86_400_000 },
+  { id: "M", label: "1M", years: 12, resample: "M", ms: 30 * 86_400_000 },
+  { id: "Q", label: "1Q", years: 15, resample: "Q", ms: 91 * 86_400_000 },
 ];
 
 const DARK_STYLES = {
@@ -41,6 +46,55 @@ const fmtExpiry = (iso) => {
   const d = new Date(iso + "T00:00:00");
   return isNaN(d) ? iso : d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
 };
+
+// Pull `years` of DAILY candles by chunking (Fyers caps one request at ~366 days), de-duped + sorted.
+async function fetchDeepDaily(sym, years) {
+  const CHUNK = 360, DAY = 864e5, now = Date.now();
+  const n = Math.ceil((years * 365) / CHUNK);
+  const reqs = [];
+  for (let i = 0; i < n; i++) {
+    const to = new Date(now - i * CHUNK * DAY);
+    const from = new Date(now - (i + 1) * CHUNK * DAY);
+    reqs.push(api.getCandles(sym, "D", ymd(from), ymd(to)).catch(() => ({ candles: [] })));
+  }
+  const map = new Map();
+  for (const r of await Promise.all(reqs)) for (const c of (r.candles || [])) map.set(c[0], c);
+  return [...map.values()].sort((a, b) => a[0] - b[0]);   // [[tsSec,o,h,l,c,v], ...] ascending
+}
+
+// Aggregate daily candles into Weekly / Monthly / Quarterly (IST buckets). OHLC: open=first,
+// high=max, low=min, close=last, volume=sum. Exact — Fyers has no native W/M/Q.
+function resampleDaily(daily, unit) {
+  const IST = 5.5 * 3600000, DAY = 864e5;
+  const bucket = (tsSec) => {
+    const ms = tsSec * 1000 + IST, d = new Date(ms);
+    const y = d.getUTCFullYear();
+    if (unit === "M") return `${y}-${d.getUTCMonth()}`;
+    if (unit === "Q") return `${y}-Q${Math.floor(d.getUTCMonth() / 3)}`;
+    const dow = (d.getUTCDay() + 6) % 7;                // Mon=0
+    return "W" + Math.floor((ms - dow * DAY) / DAY);     // Monday of that IST week
+  };
+  const groups = new Map();
+  for (const c of daily) {
+    const k = bucket(c[0]), g = groups.get(k);
+    if (!g) groups.set(k, { ts: c[0], o: c[1], h: c[2], l: c[3], c: c[4], v: c[5] || 0 });
+    else { g.h = Math.max(g.h, c[2]); g.l = Math.min(g.l, c[3]); g.c = c[4]; g.v += c[5] || 0; }
+  }
+  return [...groups.values()].map(g => ({ timestamp: g.ts * 1000, open: g.o, high: g.h, low: g.l, close: g.c, volume: g.v }));
+}
+
+// Load bars for a timeframe: intraday = one request; D/W/M/Q = deep daily (+ resample).
+async function loadBars(sym, period) {
+  const p = PERIODS.find(x => x.id === period) || PERIODS[2];
+  if (p.intraday) {
+    const to = ymd(new Date()), from = ymd(new Date(Date.now() - p.days * 864e5));
+    const resp = await api.getCandles(sym, period, from, to);
+    return (resp.candles || []).map(c => ({ timestamp: c[0] * 1000, open: c[1], high: c[2], low: c[3], close: c[4], volume: c[5] }));
+  }
+  const daily = await fetchDeepDaily(sym, p.years);
+  if (p.resample) return resampleDaily(daily, p.resample);
+  return daily.map(c => ({ timestamp: c[0] * 1000, open: c[1], high: c[2], low: c[3], close: c[4], volume: c[5] }));
+}
 
 export default function Chart({ symbol }) {
   const containerRef = useRef(null);
@@ -87,19 +141,12 @@ export default function Chart({ symbol }) {
     beIdsRef.current = [];
     setBeLegend([]);
 
-    const p = PERIODS.find(x => x.id === period) || PERIODS[2];
-    const to = ymd(new Date());
-    const from = ymd(new Date(Date.now() - p.days * 864e5));
-
     Promise.all([
-      api.getCandles(symbol.symbol, period, from, to),
+      loadBars(symbol.symbol, period),
       api.listStrategies().catch(() => []),
-    ]).then(([resp, strats]) => {
+    ]).then(([bars, strats]) => {
       if (cancelled || !chartRef.current) return;
       const chart = chartRef.current;
-      const bars = (resp.candles || []).map(c => ({
-        timestamp: c[0] * 1000, open: c[1], high: c[2], low: c[3], close: c[4], volume: c[5],
-      }));
 
       const mine = (strats || []).filter(s => (s.status || "").toUpperCase() === "OPEN" && s.underlying_symbol === symbol.symbol);
       const spot = mine.find(s => s.spot)?.spot;
