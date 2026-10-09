@@ -48,10 +48,13 @@ export default function Chart({ symbol }) {
   const periodRef = useRef("15");
   const spotLineRef = useRef(null);   // overlay id of the live spot line
   const beIdsRef = useRef([]);        // overlay ids of breakeven lines
+  const scalpIdsRef = useRef([]);     // overlay ids of scalp entry/SL/target lines
+  const draggingRef = useRef(false);  // true while an order line is being dragged (pause reconcile)
   const [period, setPeriod] = useState("15");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [beLegend, setBeLegend] = useState([]);   // [{ expiry, color, bes:[...] }] per expiry
+  const [scalps, setScalps] = useState([]);       // active scalps on this symbol (for the legend)
 
   useEffect(() => { periodRef.current = period; }, [period]);
 
@@ -202,6 +205,72 @@ export default function Chart({ symbol }) {
     };
   }, [symbol?.symbol]);
 
+  // Phase 2 — draggable scalp order lines. For each active scalp on this symbol draw entry (grey),
+  // SL (red, draggable) and target (green, draggable). Dragging SL/target asks to confirm, then
+  // PATCHes the scalp and re-fetches so the line snaps to the broker-confirmed value. Editing a
+  // WAITING/OPEN scalp only moves its SL/target — it does NOT place an order.
+  useEffect(() => {
+    if (!symbol?.symbol || !chartRef.current) return;
+    let stopped = false;
+
+    const clearLines = () => {
+      scalpIdsRef.current.forEach(id => chartRef.current?.removeOverlay(id));
+      scalpIdsRef.current = [];
+    };
+
+    const commit = (s, field, newVal, refresh) => {
+      const label = field === "sl_price" ? "SL" : "Target";
+      const nv = Math.round(newVal * 100) / 100;
+      if (!window.confirm(`Move ${label} of ${s.name || s.symbol} to ₹${nv}  (was ₹${s[field]})?`)) {
+        refresh(); return;   // declined — snap back to the stored value
+      }
+      api.editScalp(s.id, { [field]: nv }).then(() => refresh())
+        .catch(e => { alert(`Edit failed: ${e.message}`); refresh(); });
+    };
+
+    const draw = (list, refresh) => {
+      clearLines();
+      for (const s of list) {
+        const mk = (value, color, field) => {
+          if (value == null) return;
+          const draggable = field != null;
+          const o = {
+            name: "priceLine", lock: !draggable, points: [{ value }],
+            styles: { line: { color, style: "solid", size: draggable ? 2 : 1 }, text: { color } },
+          };
+          if (draggable) {
+            o.onPressedMoveStart = () => { draggingRef.current = true; return false; };
+            o.onPressedMoveEnd = (e) => {
+              draggingRef.current = false;
+              const v = e?.overlay?.points?.[0]?.value;
+              if (v != null) commit(s, field, v, refresh);
+              return false;
+            };
+          }
+          const id = chartRef.current.createOverlay(o);
+          if (id) scalpIdsRef.current.push(id);
+        };
+        mk(s.entry_price, "#9ca3af", null);
+        mk(s.sl_price, "#ef4444", "sl_price");
+        mk(s.target_price, "#22c55e", "target_price");
+      }
+    };
+
+    const refresh = () => {
+      api.listScalps().then(d => {
+        if (stopped || !chartRef.current || draggingRef.current) return;
+        const list = (d?.scalps || []).filter(s =>
+          ["WAITING", "ENTERING", "OPEN"].includes(s.status) && s.symbol === symbol.symbol);
+        setScalps(list);
+        draw(list, refresh);
+      }).catch(() => {});
+    };
+
+    refresh();
+    const interval = setInterval(refresh, 4000);   // reconcile with external changes (skipped mid-drag)
+    return () => { stopped = true; clearInterval(interval); clearLines(); };
+  }, [symbol?.symbol]);
+
 
   return (
     <div className="bg-gray-900 rounded-lg border border-gray-800 p-3">
@@ -219,6 +288,11 @@ export default function Chart({ symbol }) {
         {beLegend.map(l => (
           <span key={l.expiry} className="text-[11px]" style={{ color: l.color }}>
             — {fmtExpiry(l.expiry)} BE {l.bes.map(b => Math.round(b).toLocaleString("en-IN")).join(" / ")}
+          </span>
+        ))}
+        {scalps.map(s => (
+          <span key={s.id} className="text-[11px] text-gray-400">
+            — scalp {s.side} {s.qty} <span className="text-red-400">SL {Math.round(s.sl_price)}</span>/<span className="text-green-400">T {Math.round(s.target_price)}</span> <span className="text-gray-600">(drag to edit)</span>
           </span>
         ))}
         {loading && <span className="text-xs text-gray-500">loading…</span>}
