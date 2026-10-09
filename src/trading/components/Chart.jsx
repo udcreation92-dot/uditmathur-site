@@ -35,6 +35,13 @@ const DARK_STYLES = {
 
 const ymd = (d) => d.toISOString().slice(0, 10);
 
+// Distinct colours per expiry so two expiries' breakevens are tellable apart on the chart.
+const EXPIRY_COLORS = ["#f59e0b", "#a855f7", "#06b6d4", "#ec4899", "#84cc16"];
+const fmtExpiry = (iso) => {
+  const d = new Date(iso + "T00:00:00");
+  return isNaN(d) ? iso : d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+};
+
 export default function Chart({ symbol }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
@@ -44,7 +51,7 @@ export default function Chart({ symbol }) {
   const [period, setPeriod] = useState("15");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [beCount, setBeCount] = useState(0);
+  const [beLegend, setBeLegend] = useState([]);   // [{ expiry, color, bes:[...] }] per expiry
 
   useEffect(() => { periodRef.current = period; }, [period]);
 
@@ -139,25 +146,32 @@ export default function Chart({ symbol }) {
     // clear previous breakeven lines
     beIdsRef.current.forEach(id => chartRef.current.removeOverlay(id));
     beIdsRef.current = [];
-    setBeCount(0);
+    setBeLegend([]);
 
     api.listStrategies()
       .then(strats => {
         if (cancelled || !chartRef.current) return;
-        // Script-wide breakeven: combine EVERY leg of EVERY open strategy on this underlying into one
-        // net book, so the lines are the breakevens of the whole position — not per-strategy clutter.
         const mine = (strats || []).filter(s => (s.status || "").toUpperCase() === "OPEN" && s.underlying_symbol === symbol.symbol);
-        const allLegs = mine.flatMap(s => s.legs || []);
         const spot = mine.find(s => s.spot)?.spot;
-        const levels = strategyBreakevens(allLegs, spot);
-        levels.forEach(be => {
-          const id = chartRef.current.createOverlay({
-            name: "priceLine", lock: true, points: [{ value: be }],
-            styles: { line: { color: "#f59e0b", style: "dashed", size: 1 }, text: { color: "#f59e0b" } },
+        // Positions of DIFFERENT expiries can't be netted into one breakeven (they expire at different
+        // times), so group by expiry and give each its own net breakevens in its own colour.
+        const byExp = {};
+        for (const s of mine) (byExp[s.expiry] = byExp[s.expiry] || []).push(s);
+        const legend = [];
+        Object.keys(byExp).sort().forEach((exp, i) => {
+          const color = EXPIRY_COLORS[i % EXPIRY_COLORS.length];
+          const legs = byExp[exp].flatMap(s => s.legs || []);
+          const bes = strategyBreakevens(legs, spot);
+          bes.forEach(be => {
+            const id = chartRef.current.createOverlay({
+              name: "priceLine", lock: true, points: [{ value: be }],
+              styles: { line: { color, style: "dashed", size: 1 }, text: { color } },
+            });
+            if (id) beIdsRef.current.push(id);
           });
-          if (id) beIdsRef.current.push(id);
+          if (bes.length) legend.push({ expiry: exp, color, bes });
         });
-        setBeCount(beIdsRef.current.length);
+        setBeLegend(legend);
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -176,7 +190,11 @@ export default function Chart({ symbol }) {
           ))}
         </div>
         <span className="text-[11px] text-blue-400">— spot</span>
-        {beCount > 0 && <span className="text-[11px] text-amber-400">— net breakeven ({beCount})</span>}
+        {beLegend.map(l => (
+          <span key={l.expiry} className="text-[11px]" style={{ color: l.color }}>
+            — {fmtExpiry(l.expiry)} BE {l.bes.map(b => Math.round(b).toLocaleString("en-IN")).join(" / ")}
+          </span>
+        ))}
         {loading && <span className="text-xs text-gray-500">loading…</span>}
         {error && <span className="text-xs text-red-400">{error}</span>}
       </div>
