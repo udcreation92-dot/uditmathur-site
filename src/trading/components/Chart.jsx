@@ -144,7 +144,7 @@ export default function Chart({ symbol }) {
     api.listStrategies()
       .then(strats => {
         if (cancelled || !chartRef.current) return;
-        const mine = (strats || []).filter(s => s.status === "open" && s.underlying_symbol === symbol.symbol);
+        const mine = (strats || []).filter(s => (s.status || "").toUpperCase() === "OPEN" && s.underlying_symbol === symbol.symbol);
         const levels = new Set();
         for (const s of mine) {
           for (const be of strategyBreakevens(s.legs, s.spot)) levels.add(be);
